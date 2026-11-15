@@ -133,7 +133,7 @@ def get_recommendations(
     except InvalidModelResponseError as error:
         raise HTTPException(
             status_code=502,
-            detail="Local model returned invalid or incomplete intent.",
+            detail="Model returned invalid or incomplete intent.",
         ) from error
 
     return RecommendationResponse(

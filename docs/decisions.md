@@ -57,12 +57,20 @@ when a decision is made, changed, or removed.
   domain. The exact domain and registrar quote remain unselected.
 - Production inference will use on-demand Amazon Bedrock; local development
   retains Ollama. Models will be selected after accuracy and token-cost checks.
+- Hosted intent extraction uses the Bedrock Converse API with validated tool
+  output, shared application-owned year semantics, bounded input/output, and
+  no silent fallback to another provider. Nova Micro is the current candidate;
+  live model-quality validation remains required before public deployment.
 - The website will remain online when a conservative usage quota pauses
   recommendation searches. Budget alerts alone are not a spending cap.
 - Deployment will use the owner's existing AWS account without assuming signup
   credits. Lambda/API Gateway, S3/CloudFront and a read-only catalog snapshot
   are the target hosting approach; vector-storage compatibility and costs must
   be validated before provisioning.
+- Owner-authorized deployment administration uses the `afterglow` IAM role
+  with AWS's managed `AdministratorAccess` policy. Only the owner's existing
+  `AccountFullAccessRole` can assume it, using one-hour temporary sessions.
+  This is a deployment-tooling role, not the application's runtime identity.
 
 ## Technology
 
