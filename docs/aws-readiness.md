@@ -8,14 +8,60 @@ The default AWS region is now `us-west-2` for the application, the WSL
 region overrides still work. This setting does not move existing resources,
 enable hosted inference by default, or resolve the runtime throttling below.
 
+## Latest recheck: hosted inference is still blocked
+
+At 09:31–09:36 UTC on 2026-11-15, the WSL `afterglow` role authenticated
+successfully and the configured/default client region was Oregon. Nova Micro
+and Titan V2 still reported model authorization, agreement, entitlement and
+regional availability. Actual requests did not succeed:
+
+- The Nova Micro parsing evaluation stopped on its first query with
+  `status: blocked` and exit code 1.
+- A tiny 16-output-token, no-tools Nova request returned
+  `ThrottlingException: Too many tokens per day`.
+- The short Titan V2 embedding request returned
+  `ThrottlingException: Too many requests` and no embedding result.
+- The direct Ministral 3B parsing evaluation also stopped on its first query
+  with `status: blocked` and exit code 1.
+
+Individual `GetServiceQuota` account-level lookups in `us-west-2` then returned
+zero for Nova Micro RPM, TPM and daily tokens; Titan V2 RPM; and Ministral 3B
+RPM and TPM. GPT-OSS 20B reported model authorization and availability, but its
+individual applied RPM lookup also returned zero, so it was not invoked. A
+fresh first-page `ListServiceQuotas` result independently showed Nova Micro
+cross-region TPM as zero. These results supersede the earlier nonzero bulk
+snapshot below; the cause of the change has not been established.
+
+Use the account-specific applied value for each selected quota and a successful
+bounded invocation to establish readiness. For example:
+
+```sh
+AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
+  aws --profile afterglow --region us-west-2 service-quotas get-service-quota \
+    --service-code bedrock --quota-code L-DC7FF66C \
+    --query 'Quota.{name:QuotaName,value:Value,scope:QuotaAppliedAtLevel}'
+```
+
+AWS documents
+[`GetServiceQuota`](https://docs.aws.amazon.com/servicequotas/2019-06-24/apireference/API_GetServiceQuota.html)
+as retrieving the applied quota value. A catalog authorization result or an
+earlier bulk listing is not a successful inference test.
+
+No retry loops, quota increases, subscriptions, or hosting resources were
+created. No hosted model passed acceptance, and work requiring successful live
+inference or embeddings has not advanced. Nova Micro/Titan V2 remain candidates,
+not an accepted working hosted configuration. The local preview remains on
+Ollama and its user-visible API contract is unchanged.
+
 ## Existing-capacity assessment
 
-An additional read-only inventory on 2026-11-15 UTC compared `us-east-1` and
+An earlier read-only inventory on 2026-11-15 UTC compared `us-east-1` and
 `us-west-2`. The deployment role still assumes successfully. No quota increases,
 support cases, model subscriptions, or hosting resources were created.
 
 The relevant Nova/Titan limits in Virginia remain zero. Oregon reports these
-existing applied limits:
+values in its bulk listing. This historical snapshot is **not current usable
+capacity**; see the later individual applied-quota lookups above:
 
 | Candidate / quota | Value | Quota code |
 | --- | ---: | --- |
