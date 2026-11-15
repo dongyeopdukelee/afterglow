@@ -26,6 +26,22 @@ that public deployment or live model-quality validation is complete.
   response with proof that the account-verification issue is resolved.
 - Both probes disabled automatic retries. No vector index, hosting stack,
   provisioned model capacity, or public paid-inference endpoint was created.
+- A read-only Service Quotas check in this session also found zero applied
+  inference capacity for the candidate models:
+
+  | Quota | Applied value | Quota code |
+  | --- | ---: | --- |
+  | Nova Micro cross-region tokens/minute | 0 | `L-DC7FF66C` |
+  | Nova Micro cross-region requests/minute | 0 | `L-3F110E0F` |
+  | Nova Micro invocation tokens/day | 0 | `L-D2912E70` |
+  | Titan Text Embeddings V2 requests/minute | 0 | `L-26C560CE` |
+  | Titan Text Embeddings V2 tokens/minute | 0 | `L-DE641971` |
+
+  No quota increases or support requests were submitted. Availability and IAM
+  authorization alone do not establish usable inference capacity.
+- The checked-in opt-in parsing evaluation was rerun at 06:40 UTC. It stopped
+  on its first query, returned structured `status: blocked` output and exit
+  code 1, and did not produce a model-quality pass.
 
 ## Verified candidate model prices
 
@@ -53,7 +69,9 @@ this scenario is not a spending cap; server-enforced quotas remain required.
 
 ## Gates before continuing to public release
 
-1. Repeat bounded parsing and embedding probes after AWS verification clears.
+1. Repeat bounded parsing and embedding probes after AWS verification clears
+   and inference quotas are usable. If quotas remain zero, resolve the
+   account/Service Quotas restriction with AWS before public deployment.
 2. Evaluate representative user requests, including exact year boundaries,
    unsupported constraints, and semantic synopsis examples against known films.
 3. Validate vector-store filtering, prices, and initial ingestion cost; finish
