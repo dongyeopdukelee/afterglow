@@ -1,13 +1,22 @@
 import { StrictMode, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { detail, request, results } from './api';
-import type { Detail, Movie } from './api';
+import type { Detail, Intent, Movie } from './api';
 import './style.css';
 
 const examples = ['Comedies from the 1990s', 'Thrillers released after 2000', 'Movies with love in the title'];
 const pageSize = 12;
 function message(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong. Please try again.';
+}
+function interpretedFilters(intent: Intent): string {
+  return [
+    intent.genres.length > 0 ? `genres: ${intent.genres.join(', ')}` : '',
+    intent.year_min === null ? '' : `year ${intent.year_min_inclusive ? '≥' : '>'} ${intent.year_min}`,
+    intent.year_max === null ? '' : `year ${intent.year_max_inclusive ? '≤' : '<'} ${intent.year_max}`,
+    intent.title_keywords.length > 0 ? `title keywords: ${intent.title_keywords.join(', ')}` : '',
+    intent.unsupported_constraints.length > 0 ? `unsupported constraints: ${intent.unsupported_constraints.join(', ')}` : '',
+  ].filter(Boolean).join(' · ');
 }
 
 function MovieDialog({ movie, close }: { movie: Movie; close: () => void }) {
@@ -21,8 +30,8 @@ function MovieDialog({ movie, close }: { movie: Movie; close: () => void }) {
       .catch(e => { if (!controller.signal.aborted) setError(message(e)); });
     return () => controller.abort();
   }, [movie.id]);
-  return <dialog ref={dialog} onCancel={close} onClose={close} aria-labelledby="movie-title">
-    <button className="close" aria-label="Close movie details" onClick={close}>×</button>
+  return <dialog ref={dialog} onClose={close} aria-labelledby="movie-title">
+    <button className="close" aria-label="Close movie details" onClick={() => dialog.current?.close()}>×</button>
     <p className="eyebrow">From the catalog</p><h2 id="movie-title">{movie.title}</h2>
     <p className="muted">{movie.release_year ?? 'Year unavailable'} · {movie.genres.join(' / ') || 'Genres unavailable'}</p>
     {error ? <p role="alert">{error}</p> : full ? <p className="synopsis">{full.synopsis}</p> : <p role="status">Loading synopsis…</p>}
@@ -32,7 +41,7 @@ function MovieDialog({ movie, close }: { movie: Movie; close: () => void }) {
 function App() {
   const [query, setQuery] = useState('');
   const [movies, setMovies] = useState<Movie[]>([]);
-  const [intent, setIntent] = useState<Record<string, unknown>>();
+  const [intent, setIntent] = useState<Intent>();
   const [selected, setSelected] = useState<Movie>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -48,7 +57,8 @@ function App() {
     const timeout = window.setTimeout(() => controller.abort('timeout'), 120_000);
     try {
       const data = results(await request(search === undefined
-        ? `/movies?limit=${pageSize}&offset=${nextOffset}` : '/recommendations', controller.signal, search));
+        ? `/movies?limit=${pageSize}&offset=${nextOffset}` : '/recommendations', controller.signal, search),
+        search === undefined ? 'catalog' : 'recommendations');
       if (!controller.signal.aborted) { setMovies(data.items); setIntent(data.intent); }
     } catch (e) {
       if (!controller.signal.aborted) setError(message(e));
@@ -77,7 +87,7 @@ function App() {
       <section className="catalog" aria-label="Movie results" aria-busy={loading}>
         <div className="section-heading"><div><p className="eyebrow">{mode === 'browse' ? 'The collection' : 'Your discoveries'}</p><h2>{mode === 'browse' ? 'Start somewhere unexpected.' : `Results for “${submitted}”`}</h2></div>
           {mode === 'search' && <button className="text-button" onClick={() => void load(undefined)}>Browse all films</button>}</div>
-        {intent && <p className="interpreted">Interpreted filters: {Object.entries(intent).filter(([, v]) => v !== null && typeof v !== 'boolean' && (!Array.isArray(v) || v.length > 0)).map(([k, v]) => `${k.replaceAll('_', ' ')}: ${Array.isArray(v) ? v.join(', ') : String(v)}`).join(' · ')}</p>}
+        {intent && <p className="interpreted">Interpreted filters: {interpretedFilters(intent)}</p>}
         {loading ? <p className="status" role="status">{mode === 'search' ? 'Looking through the catalog…' : 'Opening the collection…'}</p>
           : error ? <div className="status" role="alert"><p>{error}</p><button onClick={() => void load(mode === 'browse' ? undefined : submitted, offset)}>Try again</button></div>
           : movies.length === 0 ? <p className="status" role="status">No films found. Try another request, or browse the collection.</p>

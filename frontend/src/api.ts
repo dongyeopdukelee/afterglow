@@ -5,11 +5,19 @@ export type Movie = {
   genres: string[];
 };
 export type Detail = Movie & { synopsis: string };
-export type Results = { items: Movie[]; intent?: Record<string, unknown> };
+export type Intent = {
+  genres: string[];
+  year_min: number | null;
+  year_max: number | null;
+  year_min_inclusive: boolean;
+  year_max_inclusive: boolean;
+  title_keywords: string[];
+  unsupported_constraints: string[];
+};
+export type Results = { items: Movie[]; intent?: Intent };
 
-const base = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 export async function request(path: string, signal: AbortSignal, query?: string): Promise<unknown> {
-  const response = await fetch(base + path, {
+  const response = await fetch(path, {
     signal,
     ...(query === undefined ? {} : {
       method: 'POST',
@@ -31,14 +39,36 @@ function record(value: unknown): value is Record<string, unknown> {
 }
 function movie(value: unknown): value is Movie {
   return record(value) && Number.isInteger(value.id) && typeof value.title === 'string'
-    && (value.release_year === null || typeof value.release_year === 'number')
+    && (value.release_year === null || Number.isInteger(value.release_year))
     && Array.isArray(value.genres) && value.genres.every(g => typeof g === 'string');
 }
-export function results(value: unknown): Results {
+function intentTextList(value: unknown, trim: boolean): value is string[] {
+  return Array.isArray(value) && value.length <= 10 && value.every(item => {
+    if (typeof item !== 'string') return false;
+    const length = [...(trim ? item.trim() : item)].length;
+    return length >= 1 && length <= 200;
+  });
+}
+function intentYear(value: unknown): value is number | null {
+  return value === null || (typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 9999);
+}
+function intent(value: unknown): value is Intent {
+  return record(value) && Object.keys(value).length === 7
+    && intentTextList(value.genres, true)
+    && intentYear(value.year_min) && intentYear(value.year_max)
+    && (value.year_min === null || value.year_max === null || value.year_min <= value.year_max)
+    && typeof value.year_min_inclusive === 'boolean' && typeof value.year_max_inclusive === 'boolean'
+    && intentTextList(value.title_keywords, false) && intentTextList(value.unsupported_constraints, true);
+}
+export function results(value: unknown, kind: 'catalog' | 'recommendations'): Results {
   if (!record(value) || !Array.isArray(value.items) || !value.items.every(movie)) {
     throw new Error('The server returned an unexpected response. Please try again.');
   }
-  return { items: value.items, ...(record(value.intent) ? { intent: value.intent } : {}) };
+  if (kind === 'catalog') return { items: value.items };
+  if (!intent(value.intent)) {
+    throw new Error('The server returned an unexpected response. Please try again.');
+  }
+  return { items: value.items, intent: value.intent };
 }
 export function detail(value: unknown): Detail {
   if (!record(value) || typeof value.synopsis !== 'string' || !movie(value)) {

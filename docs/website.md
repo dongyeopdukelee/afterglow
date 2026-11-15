@@ -27,11 +27,9 @@ Open http://127.0.0.1:5173. Vite proxies catalog and recommendation calls to
 Browsing and movie details do not need a model. No live model is used in CI.
 
 The build is static (`npm run build`, output `frontend/dist`). Calls are
-same-origin by default. A future CloudFront deployment must route `/movies`
+same-origin. A future CloudFront deployment must route `/movies`
 and `/recommendations` to the API, with remaining paths served from the
-frontend S3 bucket. `VITE_API_BASE_URL` optionally selects another API origin
-at build time; it is public configuration, never a place for keys or secrets.
-Cross-origin deployments require a deliberate backend CORS configuration.
+frontend S3 bucket.
 
 ## Verify
 
