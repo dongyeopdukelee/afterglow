@@ -1,7 +1,7 @@
 # Afterglow
 
-A small FastAPI movie-catalog API with local natural-language retrieval,
-built as a system-design learning project.
+A small movie catalog with a React/TypeScript website and a FastAPI API for
+local natural-language retrieval, built as a system-design learning project.
 
 See the [product roadmap](docs/roadmap.md) for the planned path from a catalog
 API to grounded natural-language movie recommendations.
@@ -45,8 +45,8 @@ ollama pull qwen3.5:2b
 ```
 
 If Ollama already runs as a service, configure `OLLAMA_NO_CLOUD=1` for that
-service instead of starting a second server. Catalog browsing works without
-Ollama. The model can run on CPU; no hosted API key is required.
+service instead of starting a second server. Catalog browsing and movie details
+work without Ollama. The model can run on CPU; no hosted API key is required.
 
 For a project-local manual installation in `.tools/ollama` (as used in this
 workspace), start the server with the same local model storage directory:
@@ -61,9 +61,20 @@ that setup. Runtime files and downloaded weights are ignored by Git.
 
 The API is available at `http://127.0.0.1:8000`.
 
-## API
+To run the local website, use Node.js 24+ and start Vite in another terminal:
 
-The first local website is documented in [website development](docs/website.md).
+```bash
+cd frontend
+npm ci --ignore-scripts
+npm run dev
+```
+
+Open `http://127.0.0.1:5173`. Vite proxies API calls to the backend above.
+See [website development](docs/website.md) for build, browser verification and
+deployment prerequisites. This milestone runs locally; AWS deployment and
+plot/mood matching remain upcoming.
+
+## API
 
 - `GET /health` reports whether the API is running.
 - `GET /movies/{movie_id}` returns a movie card and its full synopsis, or 404.
@@ -130,10 +141,11 @@ uv run pyright
 
 GitHub Actions runs these checks for pull requests and pushes to `main`. It
 also builds the production image, creates a disposable Docker Compose catalog,
-and checks the running API over HTTP. The workflow does not download the local
-Ollama model. Python recommendation tests use mocked model responses; the
-Compose smoke test only checks health and catalog browsing without starting
-Ollama.
+and checks the running API over HTTP. A separate job runs the
+[website build and browser checks](docs/website.md#verify). The workflow does
+not download the local Ollama model. Python recommendation tests use mocked
+model responses; the Compose smoke test only checks health and catalog browsing
+without starting Ollama.
 
 ## Docker Compose
 

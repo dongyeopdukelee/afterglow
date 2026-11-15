@@ -15,8 +15,8 @@ when a decision is made, changed, or removed.
   association-table design; a separate genre lookup table is not needed yet.
 - Imported genre values are stored as trimmed raw source labels without
   canonicalization.
-- Catalog-list responses will use an `items` envelope and return lightweight
-  movie cards; full synopses belong to a future movie-detail endpoint.
+- Catalog lists keep movie cards lightweight; full synopses are fetched
+  separately. See the [API contracts](../README.md#api).
 - Catalog movie release years are optional.
 - Catalog ingestion will use downloadable public dataset snapshots; live
   provider APIs and freshness automation are deferred.
@@ -79,10 +79,10 @@ when a decision is made, changed, or removed.
 - Docker Compose will define and run the local application stack.
 - Docker Compose will provide `DATABASE_URL` and persist the SQLite database in
   a named Docker volume.
-- GitHub Actions will provide continuous integration for pull requests and
-  `main` pushes. It will run the Python test suite, Ruff, Pyright, and a
-  disposable Docker Compose API smoke test. Continuous deployment is deferred
-  until the project has a live deployment target.
+- GitHub Actions will provide continuous integration; see
+  [tests and checks](../README.md#tests-and-checks) for triggers and coverage.
+  Continuous deployment is deferred until the project has a live deployment
+  target.
 - GitHub Actions will record daily automated health observations under
   `reports/health`, using existing Python checks and package build tooling.
   Report-only commits use the owner's verified account-associated author email
