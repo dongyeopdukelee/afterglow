@@ -21,7 +21,7 @@ from movie_db_llm.recommendations import (
     recommend_movies,
 )
 
-app = FastAPI(title="Movie DB LLM")
+app = FastAPI(title="Afterglow")
 
 
 class HealthResponse(BaseModel):

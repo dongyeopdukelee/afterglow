@@ -1,9 +1,13 @@
 # Project decisions
 
-This is the living record of high-level decisions for Movie DB LLM. Update it
+This is the living record of high-level decisions for Afterglow. Update it
 when a decision is made, changed, or removed.
 
 ## Product scope
+
+- The public project name is Afterglow; the GitHub repository is
+  `dongyeopdukelee/afterglow`. The internal Python package, distribution, CLI,
+  local folder, and Docker storage names remain unchanged.
 
 - The initial product is an API-first movie catalog for browsing and title search.
 - The first catalog will be imported from the CMU Movie Summary Corpus.

@@ -146,6 +146,16 @@ def api_url(tmp_path: Path) -> Generator[str]:
             process.wait(timeout=5)
 
 
+def test_api_documentation_uses_public_brand(api_url: str) -> None:
+    """API consumers see Afterglow in the served OpenAPI specification."""
+    status, body = _get_json(f"{api_url}/openapi.json")
+    assert status == 200
+    assert isinstance(body, dict)
+    specification = cast(dict[str, object], body)
+    info = cast(dict[str, object], specification["info"])
+    assert info["title"] == "Afterglow"
+
+
 def test_catalog_user_journey_over_http(api_url: str) -> None:
     """A client can check health and browse consecutive catalog pages."""
     health_status, health_body = _get_json(f"{api_url}/health")
