@@ -12,6 +12,54 @@ work; the UI labels plot/mood matching as unavailable until implemented.
 For dependencies, catalog setup and API/website startup commands, see
 [local development](../README.md#local-development).
 
+### Interactive preview during development
+
+Keep the interactive website on <http://localhost:5174> and its API on
+<http://localhost:8001>, leaving ports 5173 and 8000 free for browser tests.
+The Vite development server updates the open page when frontend files change;
+Uvicorn's reload mode restarts the API when Python files change. This is a
+development preview, not a production server or a mock of hosted inference.
+
+From the repository root, prepare a separate local preview catalog once:
+
+```sh
+mkdir -p .tools/preview
+export DATABASE_URL="sqlite:///$(pwd)/.tools/preview/catalog.sqlite3"
+uv run alembic upgrade head
+uv run movie-db-llm import-cmu
+```
+
+The import requires an empty catalog; do not repeat it on a populated database.
+The ignored `.tools/preview` directory keeps the real CMU snapshot persistent
+and separate from disposable test databases. For later schema changes, apply
+the migrations to this database before restarting its API.
+
+Start these in two terminals from the repository root:
+
+```sh
+DATABASE_URL="sqlite:///$(pwd)/.tools/preview/catalog.sqlite3" \
+  uv run uvicorn movie_db_llm.main:app --host 127.0.0.1 --port 8001 --reload
+```
+
+```sh
+cd frontend
+AFTERGLOW_API_PROXY=http://127.0.0.1:8001 \
+  npm run dev -- --port 5174 --strictPort
+```
+
+`AFTERGLOW_API_PROXY` configures only Vite's development proxy; browser requests
+remain same-origin. Restart Vite if changing this setting. Local searches
+still require Ollama with `qwen3.5:2b`; browsing and synopses do not.
+
+On the current WSL host, these services run in the `afterglow-dev` tmux window
+from `/tmp/afterglow-website`. A third pane runs the existing local Ollama
+installation and model cache, without paid API calls or model downloads.
+Closing the browser or detaching tmux does not
+stop them; stopping WSL or rebooting does. To view logs, select that window
+with `tmux select-window -t main:afterglow-dev`. To stop the preview, press
+Ctrl+C in each server pane. Do not use broad process-kill commands that would
+also stop tests or other projects.
+
 The build is static (`npm run build`, output `frontend/dist`). Calls are
 same-origin. A future CloudFront deployment must route `/movies`, `/movies/*`
 and `/recommendations` to the API, with remaining paths served from the
@@ -45,6 +93,8 @@ fixtures exercise the browser API contract, not model accuracy. Both desktop
 and mobile layouts cover browsing, pagination, full synopses, interpreted
 filters, empty/malformed responses and 422/429/503 recovery. Browser downloads
 and test fixtures are development-only, not shipped to visitors.
+Keyboard coverage also rapidly closes and reopens the same synopsis, using
+both the close button and Escape while preserving focus on the invoking card.
 
 ## Public deployment prerequisites
 

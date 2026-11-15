@@ -73,6 +73,8 @@ npm run dev
 ```
 
 Open `http://127.0.0.1:5173`. Vite proxies API calls to the backend above.
+For an auto-updating preview that can stay running alongside browser tests,
+use the [dedicated preview ports](docs/website.md#interactive-preview-during-development).
 See [website development](docs/website.md) for build, browser verification and
 deployment prerequisites. This milestone runs locally; AWS deployment and
 plot/mood matching remain upcoming.

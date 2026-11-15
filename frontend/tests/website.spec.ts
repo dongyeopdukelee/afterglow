@@ -38,6 +38,25 @@ test('visitor browses real API pages and reads a full synopsis', async ({ page }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
+test('a visitor can rapidly reopen the same synopsis with the keyboard', async ({ page }) => {
+  await page.goto('/');
+  const card = page.getByRole('button', { name: /Film 00/ });
+  await expect(card).toBeVisible();
+  await card.focus();
+  for (let attempt = 0; attempt < 8; attempt++) {
+    await card.press('Enter');
+    await expect(page.getByRole('dialog')).toBeVisible();
+    if (attempt % 2 === 0) {
+      await page.getByRole('button', { name: 'Close movie details' }).press('Enter');
+    } else {
+      await page.keyboard.press('Escape');
+    }
+    // Check the visitor-visible state without waiting for a queued close event.
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(card).toBeFocused();
+  }
+});
+
 test('search sends the entered request and exposes interpreted filters', async ({ page }) => {
   // Inference is an external boundary: the returned card and intent are an
   // explicit API contract fixture, not evidence of live model accuracy.

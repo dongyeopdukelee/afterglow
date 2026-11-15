@@ -23,6 +23,12 @@ function MovieDialog({ movie, close }: { movie: Movie; close: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [full, setFull] = useState<Detail>();
   const [error, setError] = useState('');
+  function dismiss() {
+    // Native close restores focus but queues its close event. Clear React
+    // selection now so a rapid reopen cannot reuse the still-selected movie.
+    dialog.current?.close();
+    close();
+  }
   useEffect(() => {
     const controller = new AbortController();
     dialog.current?.showModal();
@@ -30,8 +36,8 @@ function MovieDialog({ movie, close }: { movie: Movie; close: () => void }) {
       .catch(e => { if (!controller.signal.aborted) setError(message(e)); });
     return () => controller.abort();
   }, [movie.id]);
-  return <dialog ref={dialog} onClose={close} aria-labelledby="movie-title">
-    <button className="close" aria-label="Close movie details" onClick={() => dialog.current?.close()}>×</button>
+  return <dialog ref={dialog} onCancel={event => { event.preventDefault(); dismiss(); }} aria-labelledby="movie-title">
+    <button className="close" aria-label="Close movie details" onClick={dismiss}>×</button>
     <p className="eyebrow">From the catalog</p><h2 id="movie-title">{movie.title}</h2>
     <p className="muted">{movie.release_year ?? 'Year unavailable'} · {movie.genres.join(' / ') || 'Genres unavailable'}</p>
     {error ? <p role="alert">{error}</p> : full ? <p className="synopsis">{full.synopsis}</p> : <p role="status">Loading synopsis…</p>}
