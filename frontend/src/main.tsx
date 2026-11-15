@@ -118,7 +118,7 @@ function App() {
   return <>
     <a className="skip-link" href="#collection">Skip to films</a>
     <header>
-      <a className="brand" href="/" aria-label="Afterglow home"><span className="brand-mark" aria-hidden="true">✳</span>afterglow</a>
+      <a className="brand" href="/" aria-label="Afterglow home">afterglow</a>
     </header>
     <main>
       <section className="hero" aria-labelledby="hero-title">
@@ -156,7 +156,7 @@ function App() {
         {mode === 'browse' && !loading && !error && <nav className="pagination" aria-label="Catalog pages"><button disabled={offset === 0} onClick={() => void load(undefined, Math.max(0, offset - pageSize))}>← Previous</button><span>Page {Math.floor(offset / pageSize) + 1}</span><button disabled={movies.length < pageSize} onClick={() => void load(undefined, offset + pageSize)}>Next →</button></nav>}
       </section>
     </main>
-    <footer><div className="footer-top"><span className="brand"><span className="brand-mark" aria-hidden="true">✳</span>afterglow</span><p>Good films leave a little afterglow.</p></div><p className="attribution">Catalog and plot summaries: <a href="https://www.cs.cmu.edu/~ark/personas/" target="_blank" rel="noreferrer">CMU Movie Summary Corpus</a> · <a href="https://creativecommons.org/licenses/by-sa/3.0/us/" target="_blank" rel="noreferrer">CC BY-SA 3.0 US</a>. Posters from Wikimedia Commons; abstract artwork fills unmatched covers.</p>
+    <footer><div className="footer-top"><span className="brand">afterglow</span><p>Good films leave a little afterglow.</p></div><p className="attribution">Catalog and plot summaries: <a href="https://www.cs.cmu.edu/~ark/personas/" target="_blank" rel="noreferrer">CMU Movie Summary Corpus</a> · <a href="https://creativecommons.org/licenses/by-sa/3.0/us/" target="_blank" rel="noreferrer">CC BY-SA 3.0 US</a>. Posters from Wikimedia Commons; abstract artwork fills unmatched covers.</p>
       <details className="poster-credits"><summary>Poster credits</summary><ul>{posters.map(poster => <li key={poster.filename}><a href={poster.source_url} target="_blank" rel="noreferrer">{poster.title} ({poster.year})</a><span>{poster.author} · {poster.license}</span></li>)}</ul></details>
     </footer>
     {selected && <MovieDialog key={selected.id} movie={selected} close={() => setSelected(undefined)} />}

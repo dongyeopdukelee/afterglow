@@ -53,9 +53,11 @@ when a decision is made, changed, or removed.
   LLM-generated recommendation explanations are deferred.
 - Afterglow will have a public React/TypeScript website, built with Vite.
 - The website uses a light neumorphic visual direction inspired by Stripe:
-  cool pale surfaces, violet accents, raised cards, inset search controls,
-  and bold sans-serif typography. Interactive controls retain visible
-  boundaries and keyboard focus indicators.
+  Pink Orchid (`#cdb4db`), Blush Pop (`#ffafcc`), and Sky Blue (`#a2d2ff`),
+  with tinted raised surfaces, inset search controls, and bold sans-serif
+  typography. Darker shades and neutral text preserve readable contrast.
+  The wordmark is plain text, without a separate logo symbol. Interactive
+  controls retain visible boundaries and keyboard focus indicators.
 - New visits shuffle the catalog with a per-visit seed; pagination keeps that
   seed so films are not repeated or skipped. Verified poster matches appear
   first, followed by the rest of the catalog. The unseeded API remains
