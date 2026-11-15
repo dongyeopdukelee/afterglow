@@ -53,8 +53,8 @@ when a decision is made, changed, or removed.
   LLM-generated recommendation explanations are deferred.
 - Afterglow will have a public React/TypeScript website, built with Vite.
 - The website uses a light neumorphic visual direction inspired by Stripe:
-  Pink Orchid (`#cdb4db`), Blush Pop (`#ffafcc`), and Sky Blue (`#a2d2ff`),
-  with blue as the primary surface color and pink as the accent. Surfaces are
+  Cornsilk (`#fefae0`) as the base, Dry Sage (`#ccd5ae`) for supporting
+  surfaces, and Light Bronze (`#d4a373`) for accents. Surfaces are
   raised and search controls inset. Satoshi is used for
   display text and DM Sans for body text and controls; fonts are self-hosted.
   Satoshi's restricted binary stays out of Git and is obtained from Fontshare
