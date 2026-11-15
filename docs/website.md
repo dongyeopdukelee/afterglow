@@ -7,6 +7,14 @@ implemented, with live validation still pending; see
 Semantic indexing/search, usage quotas and AWS infrastructure remain subsequent
 work; the UI labels plot/mood matching as unavailable until implemented.
 
+The interface uses a light neumorphic theme: soft raised film cards, an inset
+search field, violet controls and original abstract CSS artwork. Navigation
+links jump directly to the catalog or search, and the first keyboard stop
+lets visitors skip to the films. Search instructions describe the supported
+genre, year and title filters. Shadows supplement visible control boundaries
+and focus outlines; reduced-motion settings disable smooth scrolling and
+transitions.
+
 ## Run locally
 
 For dependencies, catalog setup and API/website startup commands, see
@@ -50,6 +58,18 @@ AFTERGLOW_API_PROXY=http://127.0.0.1:8001 \
 `AFTERGLOW_API_PROXY` configures only Vite's development proxy; browser requests
 remain same-origin. Restart Vite if changing this setting. Local searches
 still require Ollama with `qwen3.5:2b`; browsing and synopses do not.
+
+For an independent UI redesign preview from another checkout, keep that
+checkout's Vite server on port 5175 with the existing API on 8001:
+
+```sh
+cd frontend
+AFTERGLOW_API_PROXY=http://127.0.0.1:8001 \
+  npm run dev -- --port 5175 --strictPort
+```
+
+This keeps the original website on 5174 available for comparison. Vite updates
+the redesign browser tab as frontend source changes; keep its process running.
 
 On the current WSL host, these services run in the `afterglow-dev` tmux window
 from `/tmp/afterglow-website`. A third pane runs the existing local Ollama

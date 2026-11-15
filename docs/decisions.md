@@ -52,6 +52,10 @@ when a decision is made, changed, or removed.
 - User accounts, live external movie-data provider APIs, and
   LLM-generated recommendation explanations are deferred.
 - Afterglow will have a public React/TypeScript website, built with Vite.
+- The website uses a light neumorphic visual direction inspired by Stripe:
+  cool pale surfaces, violet accents, raised cards, inset search controls,
+  and bold sans-serif typography. Interactive controls retain visible
+  boundaries and keyboard focus indicators. Film artwork is decorative CSS.
 - The public demo targets about 720 recommendation requests/month and a
   $10/month recurring budget, excluding up to $20/year upfront for a custom
   domain. The exact domain and registrar quote remain unselected.

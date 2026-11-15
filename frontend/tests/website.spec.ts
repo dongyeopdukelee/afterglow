@@ -6,6 +6,27 @@ const comedyIntent = {
   title_keywords: [], unsupported_constraints: [],
 };
 
+test('keyboard visitors can skip directly to the catalog', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Film 00', exact: true })).toBeVisible();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('link', { name: 'Skip to films' })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('region', { name: 'Movie results' })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button', { name: /Film 00/ })).toBeFocused();
+});
+
+test('navigation returns visitors to a clearly described search field', async ({ page }) => {
+  await page.goto('/');
+  const search = page.getByRole('textbox', { name: 'What would you like to watch?' });
+  await expect(search).toHaveAccessibleDescription('Search by genre, year, and title. Plot and mood matching are coming next.');
+  await page.getByRole('link', { name: 'The collection', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Movie results' })).toBeFocused();
+  await page.getByRole('link', { name: 'Find your next one', exact: true }).click();
+  await expect(search).toBeFocused();
+});
+
 test('visitor browses real API pages and reads a full synopsis', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Film 00', exact: true })).toBeVisible();
