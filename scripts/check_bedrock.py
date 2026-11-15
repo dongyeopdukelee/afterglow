@@ -3,7 +3,7 @@
 import argparse
 import json
 
-from botocore.exceptions import BotoCoreError
+from botocore.exceptions import BotoCoreError, ClientError
 
 from movie_db_llm.bedrock import BedrockIntentParser, bedrock_client
 from movie_db_llm.recommendations import (
@@ -23,7 +23,7 @@ def main() -> int:
     parser.parse_args()
     try:
         model = BedrockIntentParser(bedrock_client())
-    except BotoCoreError:
+    except (BotoCoreError, ClientError):
         print(
             json.dumps(
                 {

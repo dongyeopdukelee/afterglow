@@ -1,22 +1,24 @@
 """Bedrock API-contract tests with real application retrieval, not live AI."""
 
+import json
+import runpy
 import subprocess
 import sys
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import boto3
 import httpx
 import pytest
-from botocore.exceptions import CredentialRetrievalError
+from botocore.exceptions import ClientError, CredentialRetrievalError
 from botocore.stub import ANY, Stubber
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-from movie_db_llm import ollama
+from movie_db_llm import bedrock, ollama
 from movie_db_llm.bedrock import BedrockIntentParser
 from movie_db_llm.database import configure_sqlite_connection, get_session
 from movie_db_llm.main import app
@@ -254,6 +256,8 @@ def test_hosted_contract_drives_real_catalog_filters(
         "ValidationException",
         "ServiceUnavailableException",
         "ModelTimeoutException",
+        "ExpiredTokenException",
+        "InvalidClientTokenId",
     ],
 )
 def test_hosted_failure_keeps_browsing_available(
@@ -272,6 +276,7 @@ def test_hosted_failure_keeps_browsing_available(
         "detail": "Hosted search is temporarily unavailable."
     }
     assert client.get("/movies").status_code == 200
+    assert client.get("/movies/1").status_code == 200
     assert client.get("/health").json() == {"status": "ok"}
 
 
@@ -298,14 +303,34 @@ def test_unknown_provider_does_not_fall_back_to_paid_calls(
     assert client.get("/movies").status_code == 200
 
 
+@pytest.fixture(
+    params=[
+        CredentialRetrievalError(
+            provider="private-profile", error_msg="private account details"
+        ),
+        ClientError(
+            {
+                "Error": {
+                    "Code": "ExpiredTokenException",
+                    "Message": "private account details",
+                }
+            },
+            "AssumeRole",
+        ),
+    ],
+    ids=["credential-provider", "service-returned-credentials"],
+)
+def credential_error(request: pytest.FixtureRequest) -> Exception:
+    return cast(Exception, request.param)
+
+
 def test_expired_credentials_do_not_leak_details_or_break_browsing(
     hosted_api: tuple[httpx.Client, Stubber],
     monkeypatch: pytest.MonkeyPatch,
+    credential_error: Exception,
 ) -> None:
     def unavailable() -> BedrockRuntimeClient:
-        raise CredentialRetrievalError(
-            provider="private-profile", error_msg="private account details"
-        )
+        raise credential_error
 
     client, _ = hosted_api
     monkeypatch.setattr(ollama, "bedrock_client", unavailable)
@@ -313,6 +338,65 @@ def test_expired_credentials_do_not_leak_details_or_break_browsing(
     assert response.status_code == 503
     assert response.json() == {"detail": "Hosted search is unavailable."}
     assert client.get("/movies").status_code == 200
+    assert client.get("/movies/1").status_code == 200
+    assert client.get("/health").json() == {"status": "ok"}
+
+
+def test_live_check_initialization_failure_is_sanitized(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    credential_error: Exception,
+) -> None:
+    def unavailable() -> BedrockRuntimeClient:
+        raise credential_error
+
+    monkeypatch.setattr(bedrock, "bedrock_client", unavailable)
+    monkeypatch.setattr(sys, "argv", ["check_bedrock.py", "--live"])
+    root = Path(__file__).resolve().parents[1]
+    main = cast(
+        Callable[[], int],
+        runpy.run_path(str(root / "scripts/check_bedrock.py"))["main"],
+    )
+    assert main() == 1
+    output = capsys.readouterr()
+    assert output.err == ""
+    assert json.loads(output.out) == {
+        "status": "blocked",
+        "message": "AWS credentials unavailable.",
+    }
+
+
+@pytest.mark.parametrize(
+    "code", ["ExpiredTokenException", "InvalidClientTokenId"]
+)
+def test_live_check_service_failure_stops_with_sanitized_output(
+    aws_client: BedrockRuntimeClient,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    code: str,
+) -> None:
+    monkeypatch.setattr(bedrock, "bedrock_client", lambda: aws_client)
+    monkeypatch.setattr(sys, "argv", ["check_bedrock.py", "--live"])
+    root = Path(__file__).resolve().parents[1]
+    main = cast(
+        Callable[[], int],
+        runpy.run_path(str(root / "scripts/check_bedrock.py"))["main"],
+    )
+    with Stubber(aws_client) as stub:
+        stub.add_client_error(
+            "converse",
+            service_error_code=code,
+            service_message="private account details",
+        )
+        assert main() == 1
+        stub.assert_no_pending_responses()
+    output = capsys.readouterr()
+    assert output.err == ""
+    assert json.loads(output.out) == {
+        "query": "Comedies from the 1990s",
+        "status": "blocked",
+        "message": "Hosted search is temporarily unavailable.",
+    }
 
 
 def test_live_check_requires_explicit_opt_in() -> None:

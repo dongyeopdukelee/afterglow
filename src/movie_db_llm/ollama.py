@@ -4,7 +4,7 @@ from collections.abc import Generator
 from typing import Literal
 
 import httpx
-from botocore.exceptions import BotoCoreError
+from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import HTTPException
 from pydantic import BaseModel, ValidationError
 
@@ -84,7 +84,7 @@ def get_intent_parser() -> Generator[IntentParser]:
     if INTENT_PROVIDER == "bedrock":
         try:
             parser = BedrockIntentParser(bedrock_client())
-        except BotoCoreError as error:
+        except (BotoCoreError, ClientError) as error:
             raise HTTPException(
                 status_code=503, detail="Hosted search is unavailable."
             ) from error

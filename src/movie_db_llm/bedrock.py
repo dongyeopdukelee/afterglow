@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Annotated, Literal, cast
 
 import boto3
 from botocore.config import Config
-from botocore.exceptions import BotoCoreError
+from botocore.exceptions import BotoCoreError, ClientError
 from pydantic import BaseModel, Field, ValidationError
 
 from movie_db_llm.config import AWS_REGION, BEDROCK_MODEL_ID
@@ -110,18 +110,7 @@ class BedrockIntentParser:
                     "toolChoice": {"tool": {"name": "movie_intent"}},
                 },
             )
-        except (
-            BotoCoreError,
-            self.client.exceptions.AccessDeniedException,
-            self.client.exceptions.InternalServerException,
-            self.client.exceptions.ModelErrorException,
-            self.client.exceptions.ModelNotReadyException,
-            self.client.exceptions.ModelTimeoutException,
-            self.client.exceptions.ResourceNotFoundException,
-            self.client.exceptions.ServiceUnavailableException,
-            self.client.exceptions.ThrottlingException,
-            self.client.exceptions.ValidationException,
-        ) as error:
+        except (BotoCoreError, ClientError) as error:
             raise ModelUnavailableError(
                 "Hosted search is temporarily unavailable."
             ) from error
