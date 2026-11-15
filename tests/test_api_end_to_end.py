@@ -156,6 +156,32 @@ def test_api_documentation_uses_public_brand(api_url: str) -> None:
     assert info["title"] == "Afterglow"
 
 
+def test_seeded_catalog_pagination_over_http(api_url: str) -> None:
+    """Public seed/offset requests are repeatable and retain every film."""
+    first = _get_json(f"{api_url}/movies?limit=1&seed=1")
+    second = _get_json(f"{api_url}/movies?limit=1&offset=1&seed=1")
+    assert first[0] == second[0] == 200
+    assert first == _get_json(f"{api_url}/movies?limit=1&seed=1")
+    assert first[1] == {
+        "items": [
+            {"id": 2, "title": "Bravo", "release_year": None, "genres": []}
+        ]
+    }
+    assert second[1] == {
+        "items": [
+            {
+                "id": 1,
+                "title": "Alpha",
+                "release_year": 2001,
+                "genres": ["Adventure", "Comedy"],
+            }
+        ]
+    }
+    assert _get_json(f"{api_url}/movies?limit=1&seed=332") == second
+    for seed in ("-1", "2147483648", "not-a-seed"):
+        assert _get_json(f"{api_url}/movies?seed={seed}")[0] == 422
+
+
 def test_movie_detail_over_http(api_url: str) -> None:
     """A client can fetch the full synopsis and distinguish missing movies."""
     status, movie = _get_json(f"{api_url}/movies/1")

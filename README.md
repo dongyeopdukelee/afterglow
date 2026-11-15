@@ -85,6 +85,8 @@ plot/mood matching remain upcoming.
 - `GET /movies/{movie_id}` returns a movie card and its full synopsis, or 404.
 - `GET /movies` returns an ordered page of imported movie cards. It accepts
   `limit` (default 20, maximum 100) and `offset` (default 0) query parameters.
+  An optional `seed` (0–2147483647) selects repeatable shuffled discovery,
+  with verified poster matches first. Keep the same seed between pages.
 - `POST /recommendations` interprets a natural-language request using the
   configured provider and returns up to 10 matching movie cards plus the
   parsed intent.
@@ -135,7 +137,7 @@ The API never executes model-generated SQL.
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Ollama service URL |
 | `OLLAMA_MODEL` | `qwen3.5:2b` | Locally downloaded model tag |
 | `OLLAMA_TIMEOUT_SECONDS` | `120` | HTTP inference timeout in seconds |
-| `AWS_REGION` | `us-east-1` | Bedrock client region |
+| `AWS_REGION` | `us-west-2` | AWS client region (Oregon) |
 | `BEDROCK_MODEL_ID` | `us.amazon.nova-micro-v1:0` | Bedrock model or inference profile supporting the required Converse tool contract |
 
 ## Tests and checks

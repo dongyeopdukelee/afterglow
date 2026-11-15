@@ -5,12 +5,13 @@ from typing import Annotated, Literal
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import case, func, select, tuple_
 from sqlalchemy.orm import Session, selectinload
 
 from movie_db_llm.database import get_session
 from movie_db_llm.models import Movie
 from movie_db_llm.ollama import get_intent_parser
+from movie_db_llm.posters import POSTER_FILMS
 from movie_db_llm.recommendations import (
     IntentParser,
     InvalidModelResponseError,
@@ -80,15 +81,30 @@ def list_movies(
     session: Annotated[Session, Depends(get_session)],
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
+    seed: Annotated[int | None, Query(ge=0, le=2_147_483_647)] = None,
 ) -> MovieListResponse:
-    """Return one ordered page of movies."""
-    movies = session.scalars(
+    """Browse alphabetically, or shuffle with stable pages for a given seed.
+
+    Shuffled discovery puts reviewed poster matches first, then the rest of
+    the complete catalog. All pages in one visit use the same seed.
+    """
+    statement = (
         select(Movie)
         .options(selectinload(Movie.genre_assignments))
         .order_by(Movie.title, Movie.id)
         .limit(limit)
         .offset(offset)
-    ).all()
+    )
+    if seed is not None:
+        statement = statement.order_by(None).order_by(
+            case(
+                (tuple_(Movie.title, Movie.release_year).in_(POSTER_FILMS), 0),
+                else_=1,
+            ),
+            func.catalog_shuffle(Movie.id, seed),
+            Movie.id,
+        )
+    movies = session.scalars(statement).all()
 
     return MovieListResponse(items=[movie_card(movie) for movie in movies])
 

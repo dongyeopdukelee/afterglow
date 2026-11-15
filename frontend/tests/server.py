@@ -8,10 +8,10 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import uvicorn
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
 
-from movie_db_llm.database import get_session
+from movie_db_llm.database import configure_sqlite_connection, get_session
 from movie_db_llm.main import app
 from movie_db_llm.models import Movie, MovieGenre
 
@@ -25,6 +25,7 @@ def run() -> None:
             env={**environ, "DATABASE_URL": url},
         )
         engine = create_engine(url, connect_args={"check_same_thread": False})
+        event.listen(engine, "connect", configure_sqlite_connection)
         with Session(engine) as session:
             session.add_all(
                 [

@@ -2,11 +2,20 @@ import { StrictMode, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { detail, request, results } from './api';
 import type { Detail, Intent, Movie } from './api';
+import { posterFor, posters, posterUrl } from './posters';
 import './style.css';
 
 const examples = ['Comedies from the 1990s', 'Thrillers released after 2000', 'Movies with love in the title'];
 const shortExamples = ['90s comedies', 'Thrillers after 2000', '“Love” in the title'];
 const pageSize = 12;
+function discoverySeed(): number {
+  const requested = new URLSearchParams(location.search).get('seed');
+  if (requested !== null && /^\d+$/.test(requested)) {
+    const value = Number(requested);
+    if (Number.isSafeInteger(value) && value <= 2_147_483_647) return value;
+  }
+  return crypto.getRandomValues(new Uint32Array(1))[0] & 0x7fffffff;
+}
 function message(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong. Please try again.';
 }
@@ -34,6 +43,14 @@ function FilmArtwork({ variant = 0 }: { variant?: number }) {
   </div>;
 }
 
+function MovieArtwork({ movie, eager = false }: { movie: Pick<Movie, 'id' | 'title' | 'release_year'>; eager?: boolean }) {
+  const poster = posterFor(movie);
+  const [failed, setFailed] = useState(false);
+  return poster && !failed
+    ? <div className="art poster-art"><img src={posterUrl(poster)} alt={`${movie.title} (${movie.release_year}) poster`} loading={eager ? 'eager' : 'lazy'} onError={() => setFailed(true)} /></div>
+    : <FilmArtwork variant={movie.id} />;
+}
+
 function MovieDialog({ movie, close }: { movie: Movie; close: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [full, setFull] = useState<Detail>();
@@ -53,7 +70,7 @@ function MovieDialog({ movie, close }: { movie: Movie; close: () => void }) {
   }, [movie.id]);
   return <dialog ref={dialog} onCancel={event => { event.preventDefault(); dismiss(); }} aria-labelledby="movie-title">
     <button className="close" aria-label="Close movie details" onClick={dismiss}>×</button>
-    <div className="detail-art"><FilmArtwork variant={movie.id} /></div>
+    <div className="detail-art"><MovieArtwork movie={movie} /></div>
     <div className="detail-content">
       <p className="eyebrow">A closer look</p><h2 id="movie-title">{movie.title}</h2>
       <p className="muted">{movie.release_year ?? 'Year unavailable'} · {movie.genres.join(' / ') || 'Genres unavailable'}</p>
@@ -74,6 +91,7 @@ function App() {
   const [offset, setOffset] = useState(0);
   const [submitted, setSubmitted] = useState('');
   const active = useRef<AbortController | null>(null);
+  const [seed] = useState(discoverySeed);
   const resultsHeading = useRef<HTMLHeadingElement>(null);
   async function load(search: string | undefined, nextOffset = 0) {
     if (document.activeElement?.closest('main')) resultsHeading.current?.focus();
@@ -84,7 +102,7 @@ function App() {
     const timeout = window.setTimeout(() => controller.abort('timeout'), 120_000);
     try {
       const data = results(await request(search === undefined
-        ? `/movies?limit=${pageSize}&offset=${nextOffset}` : '/recommendations', controller.signal, search),
+        ? `/movies?limit=${pageSize}&offset=${nextOffset}&seed=${seed}` : '/recommendations', controller.signal, search),
         search === undefined ? 'catalog' : 'recommendations');
       if (!controller.signal.aborted) { setMovies(data.items); setIntent(data.intent); }
     } catch (e) {
@@ -101,14 +119,13 @@ function App() {
     <a className="skip-link" href="#collection">Skip to films</a>
     <header>
       <a className="brand" href="/" aria-label="Afterglow home"><span className="brand-mark" aria-hidden="true">✳</span>afterglow</a>
-      <nav className="header-nav" aria-label="Main navigation"><a href="#collection">The collection</a><a className="nav-search" href="#query">Find your next film <Arrow /></a></nav>
     </header>
     <main>
       <section className="hero" aria-labelledby="hero-title">
         <div className="hero-copy">
         <p className="eyebrow"><span className="eyebrow-dot" /> A little less scrolling. A little more cinema.</p>
         <h1 id="hero-title">Less searching.<br/><span>More cinema.</span></h1>
-        <p className="intro">Old favorites. Unexpected discoveries. Find a film by genre, year, or title—in your own words.</p>
+        <p className="intro">Find a film by genre, year, or a word you remember from the title.</p>
         <form className="search-form" onSubmit={e => { e.preventDefault(); search(query); }}>
           <label className="sr-only" htmlFor="query">What would you like to watch?</label>
           <div className="search-box">
@@ -119,11 +136,10 @@ function App() {
         <div className="examples"><span className="examples-label">Try a little inspiration</span>{examples.map((example, index) => <button key={example} aria-label={example} disabled={loading} onClick={() => search(example)}><span className="example-long">{example}</span><span className="example-short" aria-hidden="true">{shortExamples[index]}</span><Arrow diagonal /></button>)}</div>
         <p className="availability" id="search-help">Search by genre, year, and title. Plot and mood matching are coming next.</p>
         </div>
-        <div className="hero-scene" aria-hidden="true">
+        <div className="hero-scene" aria-label="Films from the collection">
           <div className="scene-halo" />
-          <div className="cinema-ticket ticket-back"><span>THE ART OF</span><strong>getting<br/>lost.</strong><div className="ticket-orbit" /></div>
-          <div className="cinema-ticket ticket-front"><span>AN AFTERGLOW ORIGINAL</span><div className="ticket-sphere" /><div className="ticket-bottom"><strong>One good<br/>discovery.</strong><span>EST.<br/>2026</span></div></div>
-          <div className="scene-caption"><span className="caption-icon">✳</span><div>For the love of film.<small>There’s always another story.</small></div></div>
+          <figure className="cinema-ticket ticket-back"><MovieArtwork movie={{ id: 15060, title: 'Metropolis', release_year: 1927 }} eager /><figcaption><strong>Metropolis</strong><span>1927 · Science fiction</span></figcaption></figure>
+          <figure className="cinema-ticket ticket-front"><MovieArtwork movie={{ id: 36695, title: 'Charade', release_year: 1963 }} eager /><figcaption><strong>Charade</strong><span>1963 · Mystery</span></figcaption></figure>
         </div>
       </section>
       <section className="catalog" id="collection" tabIndex={-1} aria-label="Movie results" aria-busy={loading}>
@@ -134,13 +150,15 @@ function App() {
           : error ? <div className="status" role="alert"><p>{error}</p><button onClick={() => void load(mode === 'browse' ? undefined : submitted, offset)}>Try again</button></div>
           : movies.length === 0 ? <p className="status" role="status">No films found. Try another request, or browse the collection.</p>
           : <div className="movie-grid">{movies.map(movie => <button className="movie-card" key={movie.id} onClick={() => setSelected(movie)}>
-            <FilmArtwork variant={movie.id} />
+            <MovieArtwork movie={movie} />
             <div className="card-content"><span className="year">{movie.release_year ?? 'Year unavailable'}</span><h3>{movie.title}</h3><p>{movie.genres.slice(0, 3).join(' / ') || 'Discover this film'}</p><span className="read-more">Read synopsis <Arrow diagonal /></span></div>
           </button>)}</div>}
         {mode === 'browse' && !loading && !error && <nav className="pagination" aria-label="Catalog pages"><button disabled={offset === 0} onClick={() => void load(undefined, Math.max(0, offset - pageSize))}>← Previous</button><span>Page {Math.floor(offset / pageSize) + 1}</span><button disabled={movies.length < pageSize} onClick={() => void load(undefined, offset + pageSize)}>Next →</button></nav>}
       </section>
     </main>
-    <footer><div className="footer-top"><span className="brand"><span className="brand-mark" aria-hidden="true">✳</span>afterglow</span><p>Good films leave a little afterglow.</p><a href="#query">Find your next one <Arrow /></a></div><p className="attribution">Catalog and plot summaries: <a href="https://www.cs.cmu.edu/~ark/personas/" target="_blank" rel="noreferrer">CMU Movie Summary Corpus</a> · <a href="https://creativecommons.org/licenses/by-sa/3.0/us/" target="_blank" rel="noreferrer">CC BY-SA 3.0 US</a>. Decorative covers are not official movie posters.</p></footer>
+    <footer><div className="footer-top"><span className="brand"><span className="brand-mark" aria-hidden="true">✳</span>afterglow</span><p>Good films leave a little afterglow.</p></div><p className="attribution">Catalog and plot summaries: <a href="https://www.cs.cmu.edu/~ark/personas/" target="_blank" rel="noreferrer">CMU Movie Summary Corpus</a> · <a href="https://creativecommons.org/licenses/by-sa/3.0/us/" target="_blank" rel="noreferrer">CC BY-SA 3.0 US</a>. Posters from Wikimedia Commons; abstract artwork fills unmatched covers.</p>
+      <details className="poster-credits"><summary>Poster credits</summary><ul>{posters.map(poster => <li key={poster.filename}><a href={poster.source_url} target="_blank" rel="noreferrer">{poster.title} ({poster.year})</a><span>{poster.author} · {poster.license}</span></li>)}</ul></details>
+    </footer>
     {selected && <MovieDialog key={selected.id} movie={selected} close={() => setSelected(undefined)} />}
   </>;
 }

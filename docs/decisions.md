@@ -55,7 +55,20 @@ when a decision is made, changed, or removed.
 - The website uses a light neumorphic visual direction inspired by Stripe:
   cool pale surfaces, violet accents, raised cards, inset search controls,
   and bold sans-serif typography. Interactive controls retain visible
-  boundaries and keyboard focus indicators. Film artwork is decorative CSS.
+  boundaries and keyboard focus indicators.
+- New visits shuffle the catalog with a per-visit seed; pagination keeps that
+  seed so films are not repeated or skipped. Verified poster matches appear
+  first, followed by the rest of the catalog. The unseeded API remains
+  alphabetical and recommendation results keep their existing ordering.
+- Movie posters use a small, reviewed Wikimedia Commons snapshot, matched by
+  exact title and year with source, author, license, and checksum records.
+  The initial batch has 13 public-domain matches. A private, encrypted S3
+  bucket stores the assets; local previews use checked-in copies without
+  visitor-time web lookups or expiring signed URLs. Unmatched or failed
+  covers retain decorative CSS artwork. Hero film cards are not interactive.
+- New AWS resources and configuration defaults use `us-west-2` (Oregon).
+  Previously recorded `us-east-1` readiness observations remain historical;
+  this change does not migrate existing resources.
 - The public demo targets about 720 recommendation requests/month and a
   $10/month recurring budget, excluding up to $20/year upfront for a custom
   domain. The exact domain and registrar quote remain unselected.

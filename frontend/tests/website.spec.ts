@@ -6,6 +6,16 @@ const comedyIntent = {
   title_keywords: [], unsupported_constraints: [],
 };
 
+// A shareable seed makes the real shuffled catalog reproducible. This worked
+// example places Film 00 first, Film 00–11 on page one, and Film 12–13 next.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    if (location.protocol === 'http:' && !new URL(location.href).searchParams.has('seed')) {
+      history.replaceState(null, '', '/?seed=332');
+    }
+  });
+});
+
 test('keyboard visitors can skip directly to the catalog', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Film 00', exact: true })).toBeVisible();
@@ -17,14 +27,43 @@ test('keyboard visitors can skip directly to the catalog', async ({ page }) => {
   await expect(page.getByRole('button', { name: /Film 00/ })).toBeFocused();
 });
 
-test('navigation returns visitors to a clearly described search field', async ({ page }) => {
+test('search describes its supported filters without redundant navigation', async ({ page }) => {
   await page.goto('/');
   const search = page.getByRole('textbox', { name: 'What would you like to watch?' });
   await expect(search).toHaveAccessibleDescription('Search by genre, year, and title. Plot and mood matching are coming next.');
-  await page.getByRole('link', { name: 'The collection', exact: true }).click();
-  await expect(page.getByRole('region', { name: 'Movie results' })).toBeFocused();
-  await page.getByRole('link', { name: 'Find your next one', exact: true }).click();
-  await expect(search).toBeFocused();
+  await expect(page.getByRole('link', { name: 'The collection', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Find your next film', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Find your next one', exact: true })).toHaveCount(0);
+});
+
+test('a discovery seed keeps pages stable and a different seed changes the selection', async ({ page }) => {
+  await page.goto('/?seed=1');
+  await expect(page.locator('.movie-card')).toHaveCount(12);
+  const firstPage = await page.locator('.movie-card h3').allTextContents();
+  await page.getByRole('button', { name: 'Next →', exact: true }).click();
+  await expect(page.locator('.movie-card')).toHaveCount(2);
+  const secondPage = await page.locator('.movie-card h3').allTextContents();
+  expect(new Set([...firstPage, ...secondPage]).size).toBe(14);
+  await page.getByRole('button', { name: '← Previous', exact: true }).click();
+  await expect(page.locator('.movie-card')).toHaveCount(12);
+  expect(await page.locator('.movie-card h3').allTextContents()).toEqual(firstPage);
+  await page.goto('/?seed=2');
+  await expect(page.locator('.movie-card')).toHaveCount(12);
+  expect(await page.locator('.movie-card h3').allTextContents()).not.toEqual(firstPage);
+});
+
+test('hero films are static and a failed poster has an intentional fallback', async ({ page, isMobile }) => {
+  await page.route('**/posters/**', route => route.abort());
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Film 00', exact: true })).toBeVisible();
+  await expect(page.locator('.cinema-ticket button, .cinema-ticket a')).toHaveCount(0);
+  if (!isMobile) {
+    await expect(page.locator('.ticket-back')).toContainText('Metropolis');
+    await expect(page.locator('.ticket-front')).toContainText('Charade');
+    await expect(page.locator('.cinema-ticket .poster-art')).toHaveCount(0);
+    await expect(page.locator('.cinema-ticket .art')).toHaveCount(2);
+  }
+  await expect(page.getByText('For the love of film.', { exact: true })).toHaveCount(0);
 });
 
 test('visitor browses real API pages and reads a full synopsis', async ({ page }) => {

@@ -8,8 +8,8 @@ Semantic indexing/search, usage quotas and AWS infrastructure remain subsequent
 work; the UI labels plot/mood matching as unavailable until implemented.
 
 See the [product decisions](decisions.md#product-scope) for the visual direction.
-Navigation links jump directly to the catalog or search, and the first keyboard
-stop lets visitors skip to the films. Search instructions follow the supported
+The first keyboard stop lets visitors skip to the films. The header keeps
+only the brand, and search instructions follow the supported
 [API filters](../README.md#api). Reduced-motion settings disable smooth
 scrolling and transitions.
 
@@ -57,12 +57,19 @@ AFTERGLOW_API_PROXY=http://127.0.0.1:8001 \
 remain same-origin. Restart Vite if changing this setting. Local searches
 still require Ollama with `qwen3.5:2b`; browsing and synopses do not.
 
-For an independent UI redesign preview from another checkout, keep that
-checkout's Vite server on port 5175 with the existing API on 8001:
+For an independent UI redesign preview from another checkout, run that
+checkout's API on 8002 and Vite on 5175. The original preview on 5174 keeps
+its API on 8001. On this host, the redesign API reads the same CMU snapshot
+without modifying it:
+
+```sh
+DATABASE_URL='sqlite:///file:/tmp/afterglow-website/.tools/preview/catalog.sqlite3?mode=ro&uri=true' \
+  uv run uvicorn movie_db_llm.main:app --host 127.0.0.1 --port 8002 --reload
+```
 
 ```sh
 cd frontend
-AFTERGLOW_API_PROXY=http://127.0.0.1:8001 \
+AFTERGLOW_API_PROXY=http://127.0.0.1:8002 \
   npm run dev -- --port 5175 --strictPort
 ```
 
@@ -154,7 +161,7 @@ To select Bedrock explicitly on the WSL host:
 
 ```sh
 AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
-AWS_PROFILE=afterglow AWS_REGION=us-east-1 INTENT_PROVIDER=bedrock \
+AWS_PROFILE=afterglow AWS_REGION=us-west-2 INTENT_PROVIDER=bedrock \
   uv run uvicorn movie_db_llm.main:app --reload
 ```
 
@@ -173,5 +180,13 @@ uv run pytest tests/test_bedrock.py tests/test_recommendations.py
 uv run pyright scripts/check_bedrock.py
 ```
 
-The catalog attribution remains visible in the website. Covers are decorative
-CSS artwork, not downloaded movie posters or additional licensed media.
+The opening selection shuffles on a new visit; its seed stays fixed while
+paging. A `?seed=332` URL makes a visit reproducible. Verified poster matches
+appear first, then the complete remaining catalog; recommendation ordering
+does not change. The API retains alphabetical ordering when no seed is given.
+
+The catalog attribution remains visible. [Poster sourcing and S3 storage](posters.md)
+describe the 13 reviewed Commons matches, local copies, and visible credits.
+The two hero films are non-clickable illustrations of the collection. Other
+films use abstract artwork until a verified match is added; image failures
+also fall back to that artwork.
