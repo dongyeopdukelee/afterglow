@@ -1,4 +1,4 @@
-# Movie DB LLM
+# Afterglow
 
 A small FastAPI movie-catalog API with local natural-language retrieval,
 built as a system-design learning project.
@@ -7,6 +7,10 @@ See the [product roadmap](docs/roadmap.md) for the planned path from a catalog
 API to grounded natural-language movie recommendations.
 
 ## Local development
+
+Afterglow retains the `movie_db_llm` Python package and `movie-db-llm` CLI
+names for compatibility. Existing commands, local folders, and Docker volumes
+do not need to be renamed.
 
 Install the locked dependencies:
 

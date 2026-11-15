@@ -1,1 +1,1 @@
-"""Movie DB LLM application package."""
+"""Afterglow application package."""
