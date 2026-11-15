@@ -57,6 +57,9 @@ when a decision is made, changed, or removed.
   domain. The exact domain and registrar quote remain unselected.
 - Production inference will use on-demand Amazon Bedrock; local development
   retains Ollama. Models will be selected after accuracy and token-cost checks.
+- Select hosted inference from existing account quotas; quota-increase requests
+  are out of scope for the current deployment phase. A positive quota listing
+  does not replace successful live invocation and quality checks.
 - Hosted intent extraction uses the Bedrock Converse API with validated tool
   output, shared application-owned year semantics, bounded input/output, and
   no silent fallback to another provider. Nova Micro is the current candidate;

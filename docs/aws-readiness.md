@@ -1,9 +1,82 @@
 # AWS readiness
 
-Checked on 2026-11-15 UTC in `us-east-1`. These are observations, not a claim
-that public deployment or live model-quality validation is complete.
+Checked on 2026-11-15 UTC in `us-east-1` and `us-west-2`. These are observations,
+not a claim that public deployment or live model-quality validation is complete.
 
-## Verified
+## Existing-capacity assessment
+
+An additional read-only inventory on 2026-11-15 UTC compared `us-east-1` and
+`us-west-2`. The deployment role still assumes successfully. No quota increases,
+support cases, model subscriptions, or hosting resources were created.
+
+The relevant Nova/Titan limits in Virginia remain zero. Oregon reports these
+existing applied limits:
+
+| Candidate / quota | Value | Quota code |
+| --- | ---: | --- |
+| Nova Micro cross-region requests/minute | 4,000 | `L-3F110E0F` |
+| Nova Micro cross-region tokens/minute | 8,000,000 | `L-DC7FF66C` |
+| Nova Micro model invocation tokens/day | 5,760,000,000 | `L-D2912E70` |
+| Titan Text Embeddings V2 requests/minute | 6,000 | `L-26C560CE` |
+| Ministral 3B 3.0 direct requests/minute | 10,000 | `L-DCA37E91` |
+| Ministral 3B 3.0 direct tokens/minute | 100,000,000 | `L-8A4BEE90` |
+| Cross-model tokens/day (account, Oregon) | 150,000,000 | `L-E3F10727` |
+
+These are different quota scopes, not additive allowances. For text embeddings,
+plan request rate against the RPM quota rather than the listed TPM value.
+Batch job-size/record limits were excluded from interactive capacity decisions.
+
+Quota-based preference remains Nova Micro for parsing and Titan V2 for
+embeddings, using Oregon as a candidate source region. Both report model
+authorization, entitlement and agreement available there. This is **not a
+verified working configuration**:
+
+- The bounded parsing evaluation using Oregon's Nova Micro profile stopped on
+  its first query with `status: blocked` and exit code 1.
+- A separate 16-output-token Nova Converse probe returned
+  `ThrottlingException: Too many tokens per day`.
+- One short Titan V2 embedding request was throttled; it produced no valid
+  embedding result.
+- The same parsing evaluation against direct Ministral 3B also stopped on its
+  first query. A separate 16-output-token, no-tools Converse probe returned
+  `ThrottlingException: Too many tokens`.
+
+Automatic retries were disabled for these probes. The tiny no-tools requests
+distinguish the runtime block from a large prompt or a forced-tool schema issue;
+they do not establish its underlying cause. No live model-quality pass, vector
+quality measurement or latency benchmark was obtained. Application defaults and
+the local preview were not switched to either candidate. Diagnose the mismatch
+between listed quotas and runtime rejection before accepting a hosted model;
+do not interpret nonzero listings as proof that the earlier access problem has
+cleared. Cohere Embed English was also inspected, but its agreement reported
+`NOT_AVAILABLE`; it was not invoked or subscribed.
+
+### Cross-region routing is not an application requirement
+
+Afterglow's low expected traffic does not require a multi-region application.
+Bedrock cross-region inference lets AWS route an individual model call among
+the destinations in a profile. It does not deploy copies of our API or website.
+
+[Nova Micro](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-amazon-nova-micro.html)
+supports direct inference in Virginia, but from Oregon AWS offers the US
+profile `us.amazon.nova-micro-v1:0`, routing within the US. Its Oregon source
+quota is separate from Virginia's quota. Titan V2 can be called directly in
+Oregon. A small direct parsing alternative is
+[Ministral 3B](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-ministral-3b.html),
+but its live probe also failed. No routing approach is accepted as working yet.
+
+AWS documents no additional geographic
+[cross-region routing fee](https://docs.aws.amazon.com/bedrock/latest/userguide/cross-region-inference.html);
+model charges are based on the source region. Oregon's Nova Micro on-demand
+Price List entries were checked against catalog version `20261111013037`:
+USD 0.035 / 1M input tokens and USD 0.14 / 1M output tokens. The published
+[Ministral 3B standard rate](https://aws.amazon.com/bedrock/pricing/) is
+USD 0.10 / 1M input tokens and USD 0.10 / 1M output tokens in Oregon.
+These are rates, not observed successful-request costs or a complete hosting
+budget. No provisioned throughput or other capacity commitment is required
+by the proposed approach.
+
+## Earlier Virginia control-plane checks
 
 - The WSL `afterglow` profile successfully assumes the project administrator
   role. It is separate from the future application runtime identity.
@@ -15,7 +88,7 @@ that public deployment or live model-quality validation is complete.
   retrieval, AND-combined filters, exact year semantics, and service failures
   without calling AWS. They do not establish natural-language accuracy.
 
-## Live checks blocked
+## Earlier Virginia live checks blocked
 
 - A bounded Nova Converse request was denied because AWS reports that the
   account is currently being verified. The service message says this normally
@@ -69,9 +142,11 @@ this scenario is not a spending cap; server-enforced quotas remain required.
 
 ## Gates before continuing to public release
 
-1. Repeat bounded parsing and embedding probes after AWS verification clears
-   and inference quotas are usable. If quotas remain zero, resolve the
-   account/Service Quotas restriction with AWS before public deployment.
+1. Select a model/source region with existing capacity and repeat bounded
+   parsing and embedding probes. Diagnose any account/runtime rejection even
+   when listed quotas are positive. No quota-increase requests are part of
+   the current phase; successful invocation and quality checks remain required
+   before public deployment.
 2. Evaluate representative user requests, including exact year boundaries,
    unsupported constraints, and semantic synopsis examples against known films.
 3. Validate vector-store filtering, prices, and initial ingestion cost; finish
@@ -91,6 +166,6 @@ intent. It is not an evaluation of the complete catalog or semantic search.
 
 ```sh
 AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
-AWS_PROFILE=afterglow AWS_REGION=us-east-1 \
+AWS_PROFILE=afterglow AWS_REGION=us-west-2 \
   uv run python scripts/check_bedrock.py --live
 ```
