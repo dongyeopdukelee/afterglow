@@ -123,7 +123,6 @@ function App() {
     <main>
       <section className="hero" aria-labelledby="hero-title">
         <div className="hero-copy">
-        <p className="eyebrow"><span className="eyebrow-dot" /> A little less scrolling. A little more cinema.</p>
         <h1 id="hero-title">Less searching.<br/><span>More cinema.</span></h1>
         <p className="intro">Find a film by genre, year, or a word you remember from the title.</p>
         <form className="search-form" onSubmit={e => { e.preventDefault(); search(query); }}>
@@ -134,7 +133,7 @@ function App() {
           <button className="primary" type="submit" disabled={loading || !query.trim()}>Find a film <Arrow /></button></div>
         </form>
         <div className="examples"><span className="examples-label">Try a little inspiration</span>{examples.map((example, index) => <button key={example} aria-label={example} disabled={loading} onClick={() => search(example)}><span className="example-long">{example}</span><span className="example-short" aria-hidden="true">{shortExamples[index]}</span><Arrow diagonal /></button>)}</div>
-        <p className="availability" id="search-help">Search by genre, year, and title. Plot and mood matching are coming next.</p>
+        <p className="availability" id="search-help">Search by genre, year, or title.</p>
         </div>
         <div className="hero-scene" aria-label="Films from the collection">
           <div className="scene-halo" />
@@ -143,8 +142,8 @@ function App() {
         </div>
       </section>
       <section className="catalog" id="collection" tabIndex={-1} aria-label="Movie results" aria-busy={loading}>
-        <div className="section-heading"><div><p className="eyebrow">{mode === 'browse' ? 'The collection' : 'Your discoveries'}</p><h2 ref={resultsHeading} tabIndex={-1}>{mode === 'browse' ? 'Start somewhere unexpected.' : `Results for “${submitted}”`}</h2></div>
-          {mode === 'search' ? <button className="text-button" onClick={() => void load(undefined)}>Browse all films <Arrow /></button> : <p className="collection-note">A new story is just a click away.</p>}</div>
+        <div className="section-heading"><div>{mode === 'search' && <p className="eyebrow">Your discoveries</p>}<h2 ref={resultsHeading} className={mode === 'browse' ? 'eyebrow collection-title' : undefined} tabIndex={-1}>{mode === 'browse' ? 'The collection' : `Results for “${submitted}”`}</h2></div>
+          {mode === 'search' && <button className="text-button" onClick={() => void load(undefined)}>Browse all films <Arrow /></button>}</div>
         {intent && <p className="interpreted">Interpreted filters: {interpretedFilters(intent)}</p>}
         {loading ? <p className="status" role="status">{mode === 'search' ? 'Looking through the catalog…' : 'Opening the collection…'}</p>
           : error ? <div className="status" role="alert"><p>{error}</p><button onClick={() => void load(mode === 'browse' ? undefined : submitted, offset)}>Try again</button></div>

@@ -30,7 +30,7 @@ test('keyboard visitors can skip directly to the catalog', async ({ page }) => {
 test('search describes its supported filters without redundant navigation', async ({ page }) => {
   await page.goto('/');
   const search = page.getByRole('textbox', { name: 'What would you like to watch?' });
-  await expect(search).toHaveAccessibleDescription('Search by genre, year, and title. Plot and mood matching are coming next.');
+  await expect(search).toHaveAccessibleDescription('Search by genre, year, or title.');
   await expect(page.getByRole('link', { name: 'The collection', exact: true })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Find your next film', exact: true })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Find your next one', exact: true })).toHaveCount(0);
@@ -88,11 +88,11 @@ test('visitor browses real API pages and reads a full synopsis', async ({ page }
   await expect(page.getByRole('heading', { name: 'Film 12', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Film 00', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Next →', exact: true })).toBeDisabled();
-  await expect(page.getByRole('heading', { name: 'Start somewhere unexpected.' })).toBeFocused();
+  await expect(page.getByRole('heading', { name: 'The collection' })).toBeFocused();
   await page.getByRole('button', { name: '← Previous', exact: true }).focus();
   await page.getByRole('button', { name: '← Previous', exact: true }).press('Enter');
   await expect(page.getByRole('heading', { name: 'Film 00', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Start somewhere unexpected.' })).toBeFocused();
+  await expect(page.getByRole('heading', { name: 'The collection' })).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(firstCard).toBeFocused();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -136,7 +136,7 @@ test('search sends the entered request and exposes interpreted filters', async (
   await page.getByRole('button', { name: 'Browse all films' }).focus();
   await page.getByRole('button', { name: 'Browse all films' }).press('Enter');
   await expect(page.getByRole('heading', { name: 'Film 00', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Start somewhere unexpected.' })).toBeFocused();
+  await expect(page.getByRole('heading', { name: 'The collection' })).toBeFocused();
 });
 
 for (const status of [422, 429, 503]) {
@@ -151,7 +151,7 @@ for (const status of [422, 429, 503]) {
     await page.getByRole('button', { name: 'Browse all films' }).focus();
     await page.getByRole('button', { name: 'Browse all films' }).press('Enter');
     await expect(page.getByRole('heading', { name: 'Film 00', exact: true })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Start somewhere unexpected.' })).toBeFocused();
+    await expect(page.getByRole('heading', { name: 'The collection' })).toBeFocused();
   });
 }
 
@@ -170,7 +170,7 @@ for (const direction of ['Next →', '← Previous']) {
       await route.fulfill({ status: 500, json: { detail: 'controlled catalog failure' } });
     });
     const control = page.getByRole('button', { name: direction, exact: true });
-    const heading = page.getByRole('heading', { name: 'Start somewhere unexpected.' });
+    const heading = page.getByRole('heading', { name: 'The collection' });
     await control.focus();
     await control.press('Enter');
     await expect(page.getByRole('status')).toContainText('Opening the collection');
@@ -198,7 +198,7 @@ test('keyboard return to browsing keeps focus through loading and failure', asyn
   });
   await page.getByRole('button', { name: 'Browse all films' }).focus();
   await page.getByRole('button', { name: 'Browse all films' }).press('Enter');
-  const heading = page.getByRole('heading', { name: 'Start somewhere unexpected.' });
+  const heading = page.getByRole('heading', { name: 'The collection' });
   await expect(page.getByRole('status')).toContainText('Opening the collection');
   await expect(heading).toBeFocused();
   release();
@@ -236,7 +236,7 @@ for (const mode of ['catalog', 'search']) {
         await page.getByRole('textbox').press('Enter');
       }
       await expect(page.getByRole('alert')).toBeVisible();
-      const heading = page.getByRole('heading', { name: mode === 'catalog' ? 'Start somewhere unexpected.' : 'Results for “comedies”' });
+      const heading = page.getByRole('heading', { name: mode === 'catalog' ? 'The collection' : 'Results for “comedies”' });
       await page.getByRole('button', { name: 'Try again' }).focus();
       retrying = true;
       await page.getByRole('button', { name: 'Try again' }).press('Enter');

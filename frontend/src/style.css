@@ -60,8 +60,6 @@ header { min-height: 84px; display: flex; align-items: center; justify-content: 
 .hero { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 32px; align-items: center; padding: 20px 0 54px; }
 .hero-copy { min-width: 0; position: relative; z-index: 1; }
 .eyebrow { display: flex; align-items: center; gap: 9px; text-transform: uppercase; letter-spacing: .15em; font-size: 11px; line-height: 1.6; font-weight: 700; color: var(--accent); margin: 0 0 22px; }
-.hero .eyebrow { letter-spacing: .025em; text-transform: none; font-size: 12px; }
-.eyebrow-dot { width: 7px; height: 7px; flex-shrink: 0; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 5px #d4a373; }
 h1, h2, .brand { font-family: "Satoshi", "DM Sans", sans-serif; }
 h1 { font-size: clamp(48px, 5.6vw, 78px); font-weight: 750; line-height: 1.06; letter-spacing: -.065em; margin: 0 0 25px; }
 h1 span { color: var(--primary-ink); background: linear-gradient(transparent 78%, #d4a373 78%, #d4a373 94%, transparent 94%); }
@@ -95,12 +93,12 @@ input::placeholder { color: #6a715c; opacity: 1; }
 .cinema-ticket figcaption strong { font-size: 14px; letter-spacing: -.02em; line-height: 1.4; }
 .cinema-ticket figcaption span { font-size: 10px; color: var(--muted); }
 
-.catalog { padding-top: 35px; border-top: 1px solid #dcdcc1; }
-.section-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 30px; }
+.catalog { padding-top: 24px; border-top: 1px solid #dcdcc1; }
+.section-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 20px; }
 .section-heading > div { min-width: 0; }
 .section-heading .eyebrow { margin-bottom: 8px; }
+.section-heading .collection-title { margin: 0; }
 h2 { font-size: 29px; font-weight: 650; line-height: 1.3; letter-spacing: -.04em; margin: 0; overflow-wrap: anywhere; }
-.collection-note { color: var(--muted); font-size: 12px; margin: 0 0 3px; }
 .text-button { display: inline-flex; align-items: center; gap: 12px; flex-shrink: 0; min-height: 44px; color: var(--accent); background: var(--surface); border: 1px solid #dcdcc3; border-radius: 12px; padding: 8px 15px; box-shadow: 4px 4px 10px #dedbc3, -4px -4px 10px #fffff4; font-size: 12px; font-weight: 600; }
 .movie-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 26px; }
 .movie-card { display: flex; flex-direction: column; min-width: 0; border: 1px solid #fffff4c0; background: var(--surface); text-align: left; padding: 9px; border-radius: 19px; color: inherit; box-shadow: 7px 7px 18px #dcdbc1, -7px -7px 18px #fffff4; transition: transform .2s, box-shadow .2s; }
@@ -173,7 +171,6 @@ dialog::backdrop { background: #4b4a3270; backdrop-filter: blur(5px); }
   .hero-scene { display: none; }
   h1 { font-size: 70px; }
   .movie-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .collection-note { display: none; }
   .intro { max-width: 450px; }
 }
 @media (max-width: 620px) {
@@ -181,8 +178,6 @@ dialog::backdrop { background: #4b4a3270; backdrop-filter: blur(5px); }
   header { min-height: 72px; gap: 15px; }
   .brand { font-size: 25px; gap: 9px; }
   .hero { padding: 16px 0 36px; }
-  .hero .eyebrow { font-size: 10px; gap: 8px; margin-bottom: 23px; }
-  .eyebrow-dot { width: 5px; height: 5px; box-shadow: 0 0 0 4px #d4a373; }
   h1 { font-size: clamp(42px, 11.3vw, 68px); letter-spacing: -.065em; margin-bottom: 21px; }
   .intro { font-size: 14px; max-width: 330px; margin-bottom: 23px; }
   .search-box { flex-wrap: wrap; gap: 0; padding: 8px; border-radius: 17px; }
@@ -194,9 +189,10 @@ dialog::backdrop { background: #4b4a3270; backdrop-filter: blur(5px); }
   .example-long { display: none; }
   .example-short { display: inline; }
   .availability { font-size: 10px; line-height: 1.7; margin-top: 17px; }
-  .catalog { padding-top: 27px; }
-  .section-heading { align-items: start; flex-direction: column; gap: 17px; margin-bottom: 24px; }
+  .catalog { padding-top: 22px; }
+  .section-heading { align-items: start; flex-direction: column; gap: 17px; margin-bottom: 18px; }
   .section-heading .eyebrow { font-size: 10px; margin-bottom: 9px; }
+  .section-heading .collection-title { margin: 0; }
   h2 { font-size: 25px; }
   .movie-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 13px; }
   .movie-card { border-radius: 15px; padding: 6px; box-shadow: 5px 5px 13px #dcdbc1, -5px -5px 13px #fffff4; }

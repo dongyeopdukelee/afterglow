@@ -5,8 +5,8 @@ It is not a public AWS deployment. An optional Bedrock parsing adapter is
 implemented, with live validation still pending; see
 [AWS readiness](aws-readiness.md).
 Semantic indexing/search, usage quotas and public hosting infrastructure remain
-subsequent work; the UI labels plot/mood matching as unavailable until
-implemented.
+subsequent work; the UI describes only the currently supported genre, year,
+and title filters.
 
 See the [product decisions](decisions.md#product-scope) for the visual direction.
 The first keyboard stop lets visitors skip to the films. The header keeps
