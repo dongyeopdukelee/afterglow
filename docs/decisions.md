@@ -73,7 +73,10 @@ when a decision is made, changed, or removed.
   Wikimedia film identifiers and TMDB. Bulk downloads are an offline,
   resumable storage job, separate from the website's bundled starter snapshot.
   External identifiers take precedence; title/year fallback requires a unique
-  exact match. Missing, ambiguous, and failed images remain explicit in the
+  exact match. Conflicting external identifiers and title/year joins shared by
+  distinct CMU source films block both matching paths and invalidate affected
+  checkpoint results when resumed with the metadata and ID map.
+  Missing, ambiguous, and failed images remain explicit in the
   coverage report. TMDB credentials stay in ignored local files and never
   reach the frontend. TMDB attribution must be added before its images are
   displayed in the website.

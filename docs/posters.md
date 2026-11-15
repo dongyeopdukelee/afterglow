@@ -32,10 +32,24 @@ and eight API requests per second, with shared backoff for rate limits.
 An optional `--id-map` JSON file contains `[freebase_id, tmdb_id]` pairs
 obtained from Wikidata's P646/P4947 properties. Supply `--cmu-metadata` with
 the original `movie.metadata.tsv` to join those IDs to the catalog. Conflicting
-identifiers are rejected. Without an ID, matching requires a unique exact
-normalized title and release year; a missing year requires an external ID.
+identifiers and title/year keys shared by distinct CMU source films are marked
+`needs_review` with reason `identity_conflict`; neither external-ID matching
+nor title/year fallback can acquire those films. Source collisions are checked
+even when only `--cmu-metadata` is supplied. Without an ID, matching requires a
+unique exact normalized title and release year; a missing year requires an external ID.
 An unavailable or uncertain match is reported, never replaced with another
 film's image. No source can guarantee a poster for every film.
+
+To reconcile an older checkpoint, rerun the importer with the same state
+directory and the CMU metadata and ID map. Every identity conflict is
+reclassified before pending work is selected, including previously stored,
+unavailable, and failed results, regardless of retry flags or `--limit`.
+The refreshed manifest excludes those records; existing image files remain
+on disk. Replace the stored batch reports after the operator reviews the
+reconciliation. This correction changes acquisition semantics, so an older
+running process must finish or be paused by its operator before reconciliation.
+After correcting source identities or mappings, `--retry-review` can retry
+records whose conflicts have been resolved.
 
 Upload completed files to the existing private bucket using the WSL-only
 deployment profile described below. Sync is additive; do not use `--delete`:

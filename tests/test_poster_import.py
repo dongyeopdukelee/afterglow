@@ -3,15 +3,18 @@
 import hashlib
 import json
 import sqlite3
+import sys
 from pathlib import Path
 
 import httpx
 import pytest
 
+from movie_db_llm import poster_import
 from movie_db_llm.poster_import import (
     AuthenticationError,
     Film,
     Importer,
+    RateLimit,
     export,
     id_crosswalk,
     select_match,
@@ -125,7 +128,270 @@ def test_crosswalk_rejects_conflicting_external_ids(tmp_path: Path) -> None:
     mapping.write_text(
         json.dumps([["/m/a", "123"], ["/m/b", "4"], ["/m/b", "5"]])
     )
-    assert id_crosswalk(metadata, mapping) == {("Alias", 2001): 123}
+    assert id_crosswalk(metadata, mapping) == {
+        ("Alias", 2001): 123,
+        ("Ambiguous", 1980): None,
+    }
+
+
+@pytest.mark.parametrize("year", ["2001", ""])
+@pytest.mark.parametrize(
+    "pairs",
+    [
+        [["/m/a", "10"]],
+        [["/m/a", "10"], ["/m/b", "10"]],
+        [["/m/a", "10"], ["/m/b", "20"]],
+        [],
+    ],
+)
+def test_crosswalk_preserves_source_identity_conflicts(
+    tmp_path: Path, year: str, pairs: list[list[str]]
+) -> None:
+    metadata = tmp_path / "metadata.tsv"
+    metadata.write_text(f"1\t/m/a\tShared\t{year}\n2\t/m/b\tShared\t{year}\n")
+    mapping = tmp_path / "ids.json"
+    mapping.write_text(json.dumps(pairs))
+    assert id_crosswalk(metadata, mapping) == {
+        ("Shared", int(year) if year else None): None
+    }
+    assert id_crosswalk(metadata, None) == {
+        ("Shared", int(year) if year else None): None
+    }
+
+
+def test_crosswalk_allows_repeated_rows_but_not_distinct_source_films(
+    tmp_path: Path,
+) -> None:
+    metadata = tmp_path / "metadata.tsv"
+    metadata.write_text(
+        "1\t/m/a\tAlias\t2001\n1\t/m/a\tAlias\t2001\n"
+        "2\t/m/b\tShared\t2002\n3\t/m/b\tShared\t2002\n"
+        "4\t/m/c\tUnmapped\t2003\n"
+    )
+    mapping = tmp_path / "ids.json"
+    mapping.write_text(json.dumps([["/m/a", "10"], ["/m/b", "20"]]))
+    assert id_crosswalk(metadata, mapping) == {
+        ("Alias", 2001): 10,
+        ("Shared", 2002): None,
+    }
+
+
+@pytest.mark.parametrize("tmdb_id", [None, 10])
+@pytest.mark.parametrize("year", [None, 2001])
+def test_identity_conflicts_block_both_matching_paths(
+    tmp_path: Path, tmdb_id: int | None, year: int | None
+) -> None:
+    film = Film(1, "Shared", year, tmdb_id, identity_conflict=True)
+    candidate = {
+        "id": 10,
+        "title": "Shared",
+        "release_date": "2001-01-01",
+        "poster_path": "/Ab12.jpg",
+    }
+    assert select_match(film, [candidate]) is None
+    seen: list[httpx.Request] = []
+
+    def provider(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=candidate)
+
+    with httpx.Client(transport=httpx.MockTransport(provider)) as client:
+        result = Importer(client, "fake-token", tmp_path).acquire(film)
+    assert result == {"status": "needs_review", "reason": "identity_conflict"}
+    assert seen == []
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("retry", [False, True])
+def test_cli_reconciles_conflicts_in_every_checkpoint_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, retry: bool
+) -> None:
+    database = tmp_path / "catalog.sqlite3"
+    statuses = [None, "stored", "no_poster", "error", "needs_review"]
+    films = [
+        (i + 1, "Shared" if i < 5 else "Undated", 2001 if i < 5 else None)
+        for i in range(10)
+    ] + [(11, "Mapped", 2002), (12, "Fallback", 2003)]
+    with sqlite3.connect(database) as catalog:
+        catalog.execute(
+            "CREATE TABLE movies (id INTEGER, title TEXT, release_year INTEGER)"
+        )
+        catalog.executemany("INSERT INTO movies VALUES (?,?,?)", films)
+    directory = tmp_path / "state"
+    directory.mkdir()
+    with sqlite3.connect(directory / "jobs.sqlite3") as state:
+        state.execute(
+            "CREATE TABLE jobs (movie_id INTEGER PRIMARY KEY, title TEXT, year INTEGER, result TEXT)"
+        )
+        state.executemany(
+            "INSERT INTO jobs VALUES (?,?,?,?)",
+            [
+                (
+                    *film,
+                    json.dumps({"status": statuses[index % 5]})
+                    if statuses[index % 5]
+                    else None,
+                )
+                for index, film in enumerate(films[:10])
+            ]
+            + [(*film, None) for film in films[10:]],
+        )
+    metadata = tmp_path / "metadata.tsv"
+    metadata.write_text(
+        "".join(
+            f"{i}\t/m/{i}\t{title}\t{year or ''}\n" for i, title, year in films
+        )
+    )
+    mapping = tmp_path / "ids.json"
+    mapping.write_text(
+        json.dumps([["/m/1", "10"], ["/m/6", "60"], ["/m/11", "110"]])
+    )
+    monkeypatch.setenv("TMDB_READ_ACCESS_TOKEN", "fake-token")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "poster_import",
+            "--database",
+            str(database),
+            "--state-dir",
+            str(directory),
+            "--cmu-metadata",
+            str(metadata),
+            "--id-map",
+            str(mapping),
+            "--workers",
+            "1",
+            "--requests-per-second",
+            "20",
+            "--limit",
+            "2",
+        ]
+        + (["--retry-errors", "--retry-review"] if retry else []),
+    )
+    seen: list[str] = []
+
+    def provider(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.path)
+        if request.url.path == "/3/configuration":
+            return httpx.Response(200, json={})
+        if request.url.path == "/3/movie/110":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 110,
+                    "release_date": "2002-01-01",
+                    "poster_path": None,
+                },
+            )
+        assert request.url.path == "/3/search/movie"
+        assert request.url.params["query"] == "Fallback"
+        return httpx.Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "id": 120,
+                        "title": "Fallback",
+                        "release_date": "2003-01-01",
+                        "poster_path": None,
+                    }
+                ]
+            },
+        )
+
+    client_type = httpx.Client
+
+    def client(**kwargs: object) -> httpx.Client:
+        return client_type(transport=httpx.MockTransport(provider))
+
+    monkeypatch.setattr(poster_import.httpx, "Client", client)
+    assert poster_import.main() == 0
+    coverage = json.loads((directory / "coverage.json").read_text())
+    assert len(coverage) == 12
+    assert all(
+        row["status"] == "needs_review"
+        and row["reason"] == "identity_conflict"
+        and "tmdb_id" not in row
+        for row in coverage[:10]
+    )
+    assert [row["status"] for row in coverage[10:]] == [
+        "no_poster",
+        "no_poster",
+    ]
+    assert json.loads((directory / "manifest.json").read_text()) == []
+    assert json.loads((directory / "progress.json").read_text()) == {
+        "needs_review": 10,
+        "no_poster": 2,
+    }
+    assert seen == ["/3/configuration", "/3/movie/110", "/3/search/movie"]
+    with sqlite3.connect(directory / "jobs.sqlite3") as state:
+        results = [
+            json.loads(row[0])
+            for row in state.execute(
+                "SELECT result FROM jobs WHERE movie_id <= 10"
+            )
+        ]
+    assert (
+        results
+        == [{"status": "needs_review", "reason": "identity_conflict"}] * 10
+    )
+
+
+def test_waiting_workers_recheck_backoff_and_keep_request_spacing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    limiter = RateLimit(8)
+    now = 0.0
+    deferred = False
+
+    def sleep(seconds: float) -> None:
+        nonlocal now, deferred
+        if seconds > 0 and not deferred:
+            limiter.defer(30)
+            deferred = True
+        now += seconds
+
+    monkeypatch.setattr(poster_import.time, "monotonic", lambda: now)
+    monkeypatch.setattr(poster_import.time, "sleep", sleep)
+    grants: list[float] = []
+    for _ in range(4):
+        limiter.wait()
+        grants.append(now)
+    assert grants == [0, 30, 30.125, 30.25]
+
+
+@pytest.mark.parametrize("status", [429, 503])
+def test_metadata_retries_honor_backoff_extended_while_sleeping(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, status: int
+) -> None:
+    now = 0.0
+    requests: list[float] = []
+    deferred = False
+
+    def provider(request: httpx.Request) -> httpx.Response:
+        requests.append(now)
+        return httpx.Response(
+            status if len(requests) == 1 else 200,
+            headers={"Retry-After": "30"},
+            json={"ok": True},
+        )
+
+    def sleep(seconds: float) -> None:
+        nonlocal now, deferred
+        if seconds > 0 and not deferred:
+            importer.rate.defer(60)
+            importer.rate.defer(1)
+            deferred = True
+        now += seconds
+
+    monkeypatch.setattr(poster_import.time, "monotonic", lambda: now)
+    monkeypatch.setattr(poster_import.time, "sleep", sleep)
+    with httpx.Client(transport=httpx.MockTransport(provider)) as client:
+        importer = Importer(client, "fake-token", tmp_path, per_second=8)
+        assert importer.metadata("/configuration") == {"ok": True}
+        assert importer.metadata("/configuration") == {"ok": True}
+    assert requests == [0, 60, 60.125]
 
 
 def test_coverage_reports_every_film_without_claiming_missing_images(

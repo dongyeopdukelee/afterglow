@@ -30,6 +30,7 @@ class Film:
     title: str
     year: int | None
     tmdb_id: int | None = None
+    identity_conflict: bool = False
 
 
 def normalized(title: str) -> str:
@@ -45,6 +46,8 @@ def select_match(
     film: Film, results: list[dict[str, Any]]
 ) -> dict[str, Any] | None:
     """Require a unique exact title/year; an external ID also resolves aliases."""
+    if film.identity_conflict:
+        return None
     matches: dict[int, dict[str, Any]] = {}
     for result in results:
         identifier = result.get("id")
@@ -83,11 +86,14 @@ class RateLimit:
         self.lock = threading.Lock()
 
     def wait(self) -> None:
-        with self.lock:
-            now = time.monotonic()
-            delay = max(0.0, self.next_at - now)
-            self.next_at = max(now, self.next_at) + self.interval
-        time.sleep(delay)
+        while True:
+            with self.lock:
+                now = time.monotonic()
+                if now >= self.next_at:
+                    self.next_at = now + self.interval
+                    return
+                delay = self.next_at - now
+            time.sleep(delay)
 
     def defer(self, seconds: float) -> None:
         with self.lock:
@@ -134,6 +140,8 @@ class Importer:
         )
 
     def acquire(self, film: Film) -> dict[str, Any]:
+        if film.identity_conflict:
+            return {"status": "needs_review", "reason": "identity_conflict"}
         try:
             candidates: list[dict[str, Any]]
             if film.tmdb_id is not None:
@@ -232,25 +240,28 @@ def read_token(path: Path) -> str:
 
 def id_crosswalk(
     metadata: Path | None, mapping: Path | None
-) -> dict[tuple[str, int | None], int]:
-    if metadata is None or mapping is None:
+) -> dict[tuple[str, int | None], int | None]:
+    if metadata is None:
         return {}
     ids: dict[str, set[int]] = {}
-    for mid, identifier in json.loads(mapping.read_text()):
+    for mid, identifier in json.loads(mapping.read_text()) if mapping else []:
         if isinstance(mid, str) and str(identifier).isdigit():
             ids.setdefault(mid, set()).add(int(identifier))
-    films: dict[tuple[str, int | None], set[int]] = {}
+    films: dict[tuple[str, int | None], set[tuple[str, str]]] = {}
     with metadata.open() as stream:
         for row in csv.reader(stream, delimiter="\t"):
             year = int(row[3][:4]) if row[3][:4].isdigit() else None
-            films.setdefault((row[2], year), set()).update(
-                ids.get(row[1], set())
-            )
-    return {
-        key: next(iter(values))
-        for key, values in films.items()
-        if len(values) == 1
-    }
+            films.setdefault((row[2], year), set()).add((row[0], row[1]))
+    crosswalk: dict[tuple[str, int | None], int | None] = {}
+    for key, identities in films.items():
+        if len(identities) != 1:
+            crosswalk[key] = None
+            continue
+        _, mid = next(iter(identities))
+        values = ids.get(mid, set())
+        if values:
+            crosswalk[key] = next(iter(values)) if len(values) == 1 else None
+    return crosswalk
 
 
 def export(state: sqlite3.Connection, directory: Path) -> dict[str, int]:
@@ -308,7 +319,13 @@ def main() -> int:
         args.database.resolve().as_uri() + "?mode=ro", uri=True
     ) as catalog:
         films = [
-            Film(i, t, y, crosswalk.get((t, y)))
+            Film(
+                i,
+                t,
+                y,
+                crosswalk.get((t, y)),
+                (t, y) in crosswalk and crosswalk[(t, y)] is None,
+            )
             for i, t, y in catalog.execute(
                 "SELECT id,title,release_year FROM movies ORDER BY id"
             )
@@ -342,6 +359,22 @@ def main() -> int:
                 "UPDATE jobs SET result=NULL "
                 "WHERE json_extract(result,'$.status')='needs_review'"
             )
+        state.executemany(
+            "UPDATE jobs SET result=? WHERE movie_id=?",
+            [
+                (
+                    json.dumps(
+                        {
+                            "status": "needs_review",
+                            "reason": "identity_conflict",
+                        }
+                    ),
+                    film.id,
+                )
+                for film in films
+                if film.identity_conflict
+            ],
+        )
         state.commit()
         pending = {
             row[0]
