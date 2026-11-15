@@ -12,7 +12,7 @@ with dogs in it" becoming grounded movie recommendations.
 
 ## 2. Catalog API
 
-- Add a movie-detail endpoint with the full synopsis.
+- [x] Add a movie-detail endpoint with the full synopsis.
 - Add title search and genre filtering.
 - [x] Add `limit`/`offset` pagination to catalog browsing.
 
@@ -52,3 +52,18 @@ Build on the completed structured-retrieval step above.
 - Create a representative set of recommendation queries.
 - Measure retrieval quality, cost, and latency.
 - Handle ambiguous and unsupported requests safely.
+
+## 8. Public website and AWS deployment
+
+- [x] Add the first local React/TypeScript website with browsing, structured
+  recommendation input and full movie synopses, plus mobile/desktop tests.
+- [x] Verify the `afterglow` deployment role and configure a WSL-only profile.
+- [x] Add an optional Bedrock intent adapter with deterministic API/catalog
+  tests; Ollama remains the default. Live hosted validation is still pending.
+- Evaluate on-demand Bedrock parsing and embedding models with measured cost.
+- Account-specific readiness and the current live-inference blocker are
+  recorded in [AWS readiness](aws-readiness.md).
+- Implement serverless hosting, semantic retrieval and fail-closed quotas.
+- Deploy and verify the complete public request path before announcing it.
+- Select a custom domain following the
+  [release gates](aws-readiness.md#gates-before-continuing-to-public-release).

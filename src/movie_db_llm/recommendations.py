@@ -62,7 +62,7 @@ class MovieIntent(BaseModel):
 
 
 class ModelUnavailableError(Exception):
-    """The local inference service could not complete the request."""
+    """The configured inference service could not complete the request."""
 
 
 class InvalidModelResponseError(Exception):

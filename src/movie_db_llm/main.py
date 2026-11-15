@@ -45,6 +45,12 @@ class MovieListResponse(BaseModel):
     items: list[MovieListItem]
 
 
+class MovieDetail(MovieListItem):
+    """Full catalog record for the website's movie detail view."""
+
+    synopsis: str
+
+
 class RecommendationResponse(MovieListResponse):
     """Grounded movie cards together with the interpreted search filters."""
 
@@ -87,6 +93,24 @@ def list_movies(
     return MovieListResponse(items=[movie_card(movie) for movie in movies])
 
 
+@app.get("/movies/{movie_id}")
+def get_movie(
+    movie_id: int,
+    session: Annotated[Session, Depends(get_session)],
+) -> MovieDetail:
+    """Return a catalog movie and its full synopsis, or a clear 404."""
+    movie = session.scalar(
+        select(Movie)
+        .options(selectinload(Movie.genre_assignments))
+        .where(Movie.id == movie_id)
+    )
+    if movie is None:
+        raise HTTPException(status_code=404, detail="Movie not found.")
+    return MovieDetail(
+        **movie_card(movie).model_dump(), synopsis=movie.synopsis
+    )
+
+
 @app.post("/recommendations")
 def get_recommendations(
     request: RecommendationRequest,
@@ -109,7 +133,7 @@ def get_recommendations(
     except InvalidModelResponseError as error:
         raise HTTPException(
             status_code=502,
-            detail="Local model returned invalid or incomplete intent.",
+            detail="Model returned invalid or incomplete intent.",
         ) from error
 
     return RecommendationResponse(

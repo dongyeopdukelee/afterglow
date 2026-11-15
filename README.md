@@ -1,7 +1,7 @@
 # Afterglow
 
-A small FastAPI movie-catalog API with local natural-language retrieval,
-built as a system-design learning project.
+A small movie catalog with a React/TypeScript website and a FastAPI API for
+local natural-language retrieval, built as a system-design learning project.
 
 See the [product roadmap](docs/roadmap.md) for the planned path from a catalog
 API to grounded natural-language movie recommendations.
@@ -31,8 +31,9 @@ Run the API with automatic reload:
 uv run uvicorn movie_db_llm.main:app --reload
 ```
 
-For recommendations, install [Ollama for Linux](https://docs.ollama.com/linux)
-inside WSL, then run it in another terminal with cloud inference disabled:
+For local recommendations, install
+[Ollama for Linux](https://docs.ollama.com/linux) inside WSL, then run it in
+another terminal with cloud inference disabled:
 
 ```bash
 OLLAMA_NO_CLOUD=1 ollama serve
@@ -45,8 +46,10 @@ ollama pull qwen3.5:2b
 ```
 
 If Ollama already runs as a service, configure `OLLAMA_NO_CLOUD=1` for that
-service instead of starting a second server. Catalog browsing works without
-Ollama. The model can run on CPU; no hosted API key is required.
+service instead of starting a second server. Catalog browsing and movie details
+work without Ollama. The model can run on CPU; no hosted API key is required.
+For the optional hosted provider, see
+[Bedrock setup](docs/website.md#hosted-intent-parsing-not-yet-deployed).
 
 For a project-local manual installation in `.tools/ollama` (as used in this
 workspace), start the server with the same local model storage directory:
@@ -61,13 +64,30 @@ that setup. Runtime files and downloaded weights are ignored by Git.
 
 The API is available at `http://127.0.0.1:8000`.
 
+To run the local website, use Node.js 24+ and start Vite in another terminal:
+
+```bash
+cd frontend
+npm ci --ignore-scripts
+npm run dev
+```
+
+Open `http://127.0.0.1:5173`. Vite proxies API calls to the backend above.
+For an auto-updating preview that can stay running alongside browser tests,
+use the [dedicated preview ports](docs/website.md#interactive-preview-during-development).
+See [website development](docs/website.md) for build, browser verification and
+deployment prerequisites. This milestone runs locally; AWS deployment and
+plot/mood matching remain upcoming.
+
 ## API
 
 - `GET /health` reports whether the API is running.
+- `GET /movies/{movie_id}` returns a movie card and its full synopsis, or 404.
 - `GET /movies` returns an ordered page of imported movie cards. It accepts
   `limit` (default 20, maximum 100) and `offset` (default 0) query parameters.
-- `POST /recommendations` interprets a natural-language request using local
-  Qwen3.5 2B and returns up to 10 matching movie cards plus the parsed intent.
+- `POST /recommendations` interprets a natural-language request using the
+  configured provider and returns up to 10 matching movie cards plus the
+  parsed intent.
 - `GET /docs` opens FastAPI's interactive API documentation.
 
 The API does not create or modify its schema at startup. Apply migrations before
@@ -101,17 +121,22 @@ oversized request text also returns 422. Model parsing is probabilistic:
 schema validation prevents invalid queries but cannot guarantee that every
 request is interpreted correctly. Semantic synopsis search comes next.
 
-HTTP 503 means Ollama could not complete inference (including a missing model
-or timeout); HTTP 502 means the model returned invalid or incomplete intent.
+HTTP 503 means the configured provider is unavailable, misconfigured, or unable
+to complete inference. This includes missing local models, timeouts, hosted
+service or credential failures, and an oversized hosted input context.
+HTTP 502 means the model returned invalid or incomplete intent.
 The API never executes model-generated SQL.
 
-Local inference configuration:
+### Inference configuration
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
+| `INTENT_PROVIDER` | `ollama` | Select `ollama` or `bedrock`; unknown values return 503 without fallback |
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Ollama service URL |
 | `OLLAMA_MODEL` | `qwen3.5:2b` | Locally downloaded model tag |
 | `OLLAMA_TIMEOUT_SECONDS` | `120` | HTTP inference timeout in seconds |
+| `AWS_REGION` | `us-east-1` | Bedrock client region |
+| `BEDROCK_MODEL_ID` | `us.amazon.nova-micro-v1:0` | Bedrock model or inference profile supporting the required Converse tool contract |
 
 ## Tests and checks
 
@@ -127,10 +152,11 @@ uv run pyright
 
 GitHub Actions runs these checks for pull requests and pushes to `main`. It
 also builds the production image, creates a disposable Docker Compose catalog,
-and checks the running API over HTTP. The workflow does not download the local
-Ollama model. Python recommendation tests use mocked model responses; the
-Compose smoke test only checks health and catalog browsing without starting
-Ollama.
+and checks the running API over HTTP. A separate job runs the
+[website build and browser checks](docs/website.md#verify). The workflow does
+not download the local Ollama model. Python recommendation tests use mocked
+model responses; the Compose smoke test only checks health and catalog browsing
+without starting Ollama.
 
 ## Docker Compose
 

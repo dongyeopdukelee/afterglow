@@ -156,6 +156,24 @@ def test_api_documentation_uses_public_brand(api_url: str) -> None:
     assert info["title"] == "Afterglow"
 
 
+def test_movie_detail_over_http(api_url: str) -> None:
+    """A client can fetch the full synopsis and distinguish missing movies."""
+    status, movie = _get_json(f"{api_url}/movies/1")
+    assert status == 200
+    assert movie == {
+        "id": 1,
+        "title": "Alpha",
+        "release_year": 2001,
+        "genres": ["Adventure", "Comedy"],
+        "synopsis": "A first test movie.",
+    }
+    assert _get_json(f"{api_url}/movies/999") == (
+        404,
+        {"detail": "Movie not found."},
+    )
+    assert _get_json(f"{api_url}/movies/not-an-id")[0] == 422
+
+
 def test_catalog_user_journey_over_http(api_url: str) -> None:
     """A client can check health and browse consecutive catalog pages."""
     health_status, health_body = _get_json(f"{api_url}/health")
