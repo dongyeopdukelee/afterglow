@@ -556,6 +556,37 @@ def test_cli_preserves_external_ids_and_reconciles_unsafe_fallbacks(
         "/3/search/movie",
         "/3/movie/900",
     ]
+    with sqlite3.connect(directory / "jobs.sqlite3") as state:
+        checkpoint = state.execute(
+            "SELECT movie_id,result FROM jobs ORDER BY movie_id"
+        ).fetchall()
+    for optional_inputs in [
+        [],
+        ["--cmu-metadata", str(metadata)],
+        ["--id-map", str(mapping)],
+    ]:
+        seen.clear()
+        monkeypatch.setattr(sys, "argv", argv[:5] + optional_inputs)
+        assert poster_import.main() == 0
+        assert seen == ["/3/configuration"]
+        assert (
+            json.loads((directory / "manifest.json").read_text()) == manifest
+        )
+        assert (
+            json.loads((directory / "coverage.json").read_text()) == coverage
+        )
+        with sqlite3.connect(directory / "jobs.sqlite3") as state:
+            assert (
+                state.execute(
+                    "SELECT movie_id,result FROM jobs ORDER BY movie_id"
+                ).fetchall()
+                == checkpoint
+            )
+        assert all(
+            (directory / "images" / row["filename"]).read_bytes() == image
+            for row in manifest
+        )
+    monkeypatch.setattr(sys, "argv", argv)
     old_image = directory / "images" / "old.jpg"
     old_image.write_bytes(image)
     with sqlite3.connect(directory / "jobs.sqlite3") as state:
@@ -599,6 +630,43 @@ def test_cli_preserves_external_ids_and_reconciles_unsafe_fallbacks(
             ).fetchall()
             == films
         )
+    metadata.write_text(
+        metadata.read_text(encoding="utf-8")
+        + "10\t/m/10\tＡlpha\t2000\t\t\t{}\t{}\t{}\n",
+        encoding="utf-8",
+    )
+    mapping.write_text(
+        json.dumps(json.loads(mapping.read_text()) + [["/m/4", "401"]])
+    )
+    seen.clear()
+    monkeypatch.setattr(sys, "argv", argv)
+    assert poster_import.main() == 0
+    assert seen == ["/3/configuration"]
+    conflicted_coverage = json.loads((directory / "coverage.json").read_text())
+    assert [
+        row["movie_id"]
+        for row in conflicted_coverage
+        if row["status"] == "needs_review"
+    ] == [2, 3, 4, 6]
+    for row in conflicted_coverage:
+        if row["movie_id"] in {3, 4}:
+            assert row == {
+                "movie_id": row["movie_id"],
+                "title": "Ａlpha" if row["movie_id"] == 3 else "alpha",
+                "year": 2000,
+                "status": "needs_review",
+                "reason": "identity_conflict",
+            }
+    assert json.loads((directory / "manifest.json").read_text()) == [
+        row for row in manifest if row["movie_id"] not in {3, 4}
+    ]
+    with sqlite3.connect(directory / "jobs.sqlite3") as state:
+        assert [
+            json.loads(row[0])
+            for row in state.execute(
+                "SELECT result FROM jobs WHERE movie_id IN (3,4) ORDER BY movie_id"
+            )
+        ] == [{"status": "needs_review", "reason": "identity_conflict"}] * 2
 
 
 def test_waiting_workers_recheck_backoff_and_keep_request_spacing(

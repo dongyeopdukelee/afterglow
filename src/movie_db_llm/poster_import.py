@@ -371,7 +371,9 @@ def main() -> int:
             )
         state.executemany(
             "UPDATE jobs SET result=? WHERE movie_id=? "
-            "AND (? OR json_extract(result,'$.match_method')='title_year')",
+            "AND (? OR json_extract(result,'$.match_method')='title_year' "
+            "OR (? AND (json_extract(result,'$.status') IS NOT 'stored' "
+            "OR json_extract(result,'$.match_method') IS NOT 'external_id')))",
             [
                 (
                     json.dumps(
@@ -381,6 +383,8 @@ def main() -> int:
                         }
                     ),
                     film.id,
+                    (film.title, film.year) in crosswalk
+                    and crosswalk[(film.title, film.year)] is None,
                     film.identity_conflict,
                 )
                 for film in films

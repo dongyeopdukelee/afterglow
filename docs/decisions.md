@@ -79,6 +79,8 @@ when a decision is made, changed, or removed.
   Normalized title/year collisions in the catalog block fallback even without
   optional crosswalk inputs; independently resolved external IDs remain usable.
   Older fallback results for those collisions are invalidated on resume.
+  Completed external-ID provenance survives omission of optional crosswalk
+  inputs unless supplied evidence proves a source-identity or mapping conflict.
   Missing, ambiguous, and failed images remain explicit in the
   coverage report. TMDB credentials stay in ignored local files and never
   reach the frontend. TMDB attribution must be added before its images are

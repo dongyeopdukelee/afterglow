@@ -56,8 +56,11 @@ on disk. Replace the stored batch reports after the operator reviews the
 reconciliation. This correction changes acquisition semantics, so an older
 running process must finish or be paused by its operator before reconciliation.
 Stored title/year fallback results for colliding catalog keys also move to
-review, even if an external ID is now available. Safe external-ID results are
-preserved. Use a subsequent `--retry-review` pass to acquire newly resolved IDs.
+review, even if an external ID is now available. Completed external-ID results
+retain their provenance when optional crosswalk inputs are omitted and only
+fallback ambiguity remains. Proven source-identity or mapping conflicts still
+invalidate them. Use a subsequent `--retry-review` pass to acquire newly
+resolved IDs.
 After correcting source identities or mappings, `--retry-review` can retry
 records whose conflicts have been resolved.
 
