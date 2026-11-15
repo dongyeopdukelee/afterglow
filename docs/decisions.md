@@ -67,5 +67,9 @@ when a decision is made, changed, or removed.
   `main` pushes. It will run the Python test suite, Ruff, Pyright, and a
   disposable Docker Compose API smoke test. Continuous deployment is deferred
   until the project has a live deployment target.
+- GitHub Actions will record daily automated health observations under
+  `reports/health`, using existing Python checks and package build tooling.
+  Report-only commits use the owner's verified account-associated author email
+  and the workflow's GitHub token, without weakening branch protections.
 - Ollama will serve local model inference over HTTP. Docker Compose will run
   it as a CPU service with persistent model storage; GPU setup is deferred.

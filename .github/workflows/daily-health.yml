@@ -1,0 +1,69 @@
+name: Daily project health
+
+on:
+  schedule:
+    - cron: '37 17 * * *' # 09:37 PST / 10:37 PDT; date below uses Los Angeles
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-project-health
+  cancel-in-progress: false
+
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - uses: astral-sh/setup-uv@v10.3.3
+      - name: Install locked dependencies
+        id: dependencies
+        continue-on-error: true
+        run: uv sync --locked --all-groups
+      - name: Observe checks (failure remains visible)
+        if: always()
+        env:
+          DEPENDENCIES_READY: ${{ steps.dependencies.outcome == 'success' }}
+        run: python scripts/project_health.py collect /tmp/daily-report
+      - name: Retain compact report even on check failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-report
+          path: /tmp/daily-report/*.md
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: observe
+    if: ${{ always() && !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: daily-report
+          path: /tmp/daily-report
+      - name: Publish only the dated report
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          files=(/tmp/daily-report/*.md)
+          test "${#files[@]}" -eq 1
+          python3 scripts/project_health.py publish "${files[0]}"
