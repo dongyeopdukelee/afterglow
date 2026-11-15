@@ -60,6 +60,9 @@ jobs:
         with:
           name: daily-report
           path: /tmp/daily-report
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
       - name: Publish only the dated report
         env:
           GH_TOKEN: ${{ github.token }}
