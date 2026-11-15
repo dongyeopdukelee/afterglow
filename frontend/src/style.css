@@ -81,7 +81,6 @@ input::placeholder { color: #6a715c; opacity: 1; }
 .example-short { display: none; }
 .examples button:hover:not(:disabled) { color: var(--accent); border-color: #bb8b5f; background: color-mix(in srgb, var(--sage) 35%, var(--surface)); }
 .examples button:active:not(:disabled) { box-shadow: var(--inset); }
-.availability { color: #6a715c; font-size: 11px; margin: 20px 0 0; max-width: 420px; }
 
 /* Real film posters in soft raised frames; the hero cards are not links. */
 .hero-scene { height: 420px; position: relative; min-width: 0; isolation: isolate; }
@@ -188,7 +187,6 @@ dialog::backdrop { background: #4b4a3270; backdrop-filter: blur(5px); }
   .examples button { padding: 7px 10px; font-size: 10px; }
   .example-long { display: none; }
   .example-short { display: inline; }
-  .availability { font-size: 10px; line-height: 1.7; margin-top: 17px; }
   .catalog { padding-top: 22px; }
   .section-heading { align-items: start; flex-direction: column; gap: 17px; margin-bottom: 18px; }
   .section-heading .eyebrow { font-size: 10px; margin-bottom: 9px; }

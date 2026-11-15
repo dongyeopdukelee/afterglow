@@ -30,7 +30,7 @@ test('keyboard visitors can skip directly to the catalog', async ({ page }) => {
 test('search describes its supported filters without redundant navigation', async ({ page }) => {
   await page.goto('/');
   const search = page.getByRole('textbox', { name: 'What would you like to watch?' });
-  await expect(search).toHaveAccessibleDescription('Search by genre, year, or title.');
+  await expect(search).toHaveAccessibleDescription('Find a film by genre, year, or a word you remember from the title.');
   await expect(page.getByRole('link', { name: 'The collection', exact: true })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Find your next film', exact: true })).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Find your next one', exact: true })).toHaveCount(0);

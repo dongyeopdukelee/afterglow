@@ -124,16 +124,15 @@ function App() {
       <section className="hero" aria-labelledby="hero-title">
         <div className="hero-copy">
         <h1 id="hero-title">Less searching.<br/><span>More cinema.</span></h1>
-        <p className="intro">Find a film by genre, year, or a word you remember from the title.</p>
+        <p className="intro" id="search-intro">Find a film by genre, year, or a word you remember from the title.</p>
         <form className="search-form" onSubmit={e => { e.preventDefault(); search(query); }}>
           <label className="sr-only" htmlFor="query">What would you like to watch?</label>
           <div className="search-box">
           <svg className="search-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" strokeWidth="1.7"/><path d="m16 16 4 4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></svg>
-          <input id="query" value={query} onChange={e => setQuery(e.target.value)} maxLength={1000} placeholder="A comedy from the 90s…" autoComplete="off" aria-describedby="search-help" required />
+          <input id="query" value={query} onChange={e => setQuery(e.target.value)} maxLength={1000} placeholder="A comedy from the 90s…" autoComplete="off" aria-describedby="search-intro" required />
           <button className="primary" type="submit" disabled={loading || !query.trim()}>Find a film <Arrow /></button></div>
         </form>
         <div className="examples"><span className="examples-label">Try a little inspiration</span>{examples.map((example, index) => <button key={example} aria-label={example} disabled={loading} onClick={() => search(example)}><span className="example-long">{example}</span><span className="example-short" aria-hidden="true">{shortExamples[index]}</span><Arrow diagonal /></button>)}</div>
-        <p className="availability" id="search-help">Search by genre, year, or title.</p>
         </div>
         <div className="hero-scene" aria-label="Films from the collection">
           <div className="scene-halo" />
