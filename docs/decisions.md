@@ -69,6 +69,14 @@ when a decision is made, changed, or removed.
   visitor-time web lookups. See [poster sourcing and storage](posters.md) for
   matching, provenance, bundled assets, private S3 storage, and fallback rules.
   Hero film cards are not interactive.
+- Poster acquisition is expanding across the complete CMU catalog using
+  Wikimedia film identifiers and TMDB. Bulk downloads are an offline,
+  resumable storage job, separate from the website's bundled starter snapshot.
+  External identifiers take precedence; title/year fallback requires a unique
+  exact match. Missing, ambiguous, and failed images remain explicit in the
+  coverage report. TMDB credentials stay in ignored local files and never
+  reach the frontend. TMDB attribution must be added before its images are
+  displayed in the website.
 - New AWS resources and configuration defaults use `us-west-2` (Oregon).
   Previously recorded `us-east-1` readiness observations remain historical;
   this change does not migrate existing resources.

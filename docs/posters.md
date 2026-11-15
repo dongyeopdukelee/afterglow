@@ -1,5 +1,65 @@
 # Movie poster snapshot
 
+## Catalog-wide acquisition
+
+The bundled website snapshot below is separate from the catalog-wide storage
+job. The current catalog contains 42,207 films. A Wikimedia/Wikidata inventory
+uses the CMU snapshot's original Freebase identifiers and Wikidata's film
+poster property (P3383), rather than general image search. Cached source and
+license metadata accompany the downloaded public-domain images.
+
+TMDB supplies the broader acquisition pass. Set `TMDB_READ_ACCESS_TOKEN` in
+the environment or in the ignored `.tools/tmdb.env` file (mode 0600); do not
+put credentials in source or command-line arguments. Run with the project's
+Python environment:
+
+```sh
+python -m movie_db_llm.poster_import \
+  --database /path/to/catalog.sqlite3 \
+  --state-dir .tools/tmdb-posters
+```
+
+The catalog is read-only. `jobs.sqlite3` checkpoints each result;
+`coverage.json` records every film, including pending, missing, ambiguous, and
+failed matches; `manifest.json` records only downloaded images and includes
+the TMDB identifier, matching method, source URL, byte count, and SHA-256.
+Images use content-addressed names under `images/`. Repeating the command
+continues pending work. `--retry-errors` retries failed records, and
+`--retry-review` revisits uncertain matches after improving the ID map. `--limit 10`
+is useful for a small real-provider smoke check. The default is eight workers
+and eight API requests per second, with shared backoff for rate limits.
+
+An optional `--id-map` JSON file contains `[freebase_id, tmdb_id]` pairs
+obtained from Wikidata's P646/P4947 properties. Supply `--cmu-metadata` with
+the original `movie.metadata.tsv` to join those IDs to the catalog. Conflicting
+identifiers are rejected. Without an ID, matching requires a unique exact
+normalized title and release year; a missing year requires an external ID.
+An unavailable or uncertain match is reported, never replaced with another
+film's image. No source can guarantee a poster for every film.
+
+Upload completed files to the existing private bucket using the WSL-only
+deployment profile described below. Sync is additive; do not use `--delete`:
+
+```sh
+aws s3 sync .tools/tmdb-posters/images/ "s3://$POSTER_BUCKET/posters/" \
+  --region us-west-2 --sse AES256 --only-show-errors
+aws s3 cp .tools/tmdb-posters/manifest.json \
+  "s3://$POSTER_BUCKET/batches/tmdb/manifest.json" \
+  --region us-west-2 --sse AES256
+aws s3 cp .tools/tmdb-posters/coverage.json \
+  "s3://$POSTER_BUCKET/batches/tmdb/coverage.json" \
+  --region us-west-2 --sse AES256
+```
+
+These operational files and downloaded bulk assets are ignored by Git; the
+website continues using its bundled starter snapshot until display integration.
+Before displaying TMDB images, include its approved logo and required notice
+in an About/Credits section. TMDB images are not public-domain assets. See
+[TMDB attribution and usage](https://developer.themoviedb.org/docs/faq) and
+[API rate limits](https://developer.themoviedb.org/docs/rate-limiting).
+
+## Bundled website snapshot
+
 The first image batch contains 13 title-and-year matches from Wikimedia
 Commons. The search candidates were reviewed rather than accepting the first
 search result: results included unrelated books, logos, and an AI-generated
