@@ -49,7 +49,9 @@ function App() {
   const [offset, setOffset] = useState(0);
   const [submitted, setSubmitted] = useState('');
   const active = useRef<AbortController | null>(null);
+  const resultsHeading = useRef<HTMLHeadingElement>(null);
   async function load(search: string | undefined, nextOffset = 0) {
+    if (document.activeElement?.closest('main')) resultsHeading.current?.focus();
     active.current?.abort();
     const controller = new AbortController(); active.current = controller;
     setLoading(true); setError(''); setMovies([]); setIntent(undefined);
@@ -85,7 +87,7 @@ function App() {
         <p className="availability">Early preview · Genre, year and title searches work today. Plot and mood matching are coming next.</p>
       </section>
       <section className="catalog" aria-label="Movie results" aria-busy={loading}>
-        <div className="section-heading"><div><p className="eyebrow">{mode === 'browse' ? 'The collection' : 'Your discoveries'}</p><h2>{mode === 'browse' ? 'Start somewhere unexpected.' : `Results for “${submitted}”`}</h2></div>
+        <div className="section-heading"><div><p className="eyebrow">{mode === 'browse' ? 'The collection' : 'Your discoveries'}</p><h2 ref={resultsHeading} tabIndex={-1}>{mode === 'browse' ? 'Start somewhere unexpected.' : `Results for “${submitted}”`}</h2></div>
           {mode === 'search' && <button className="text-button" onClick={() => void load(undefined)}>Browse all films</button>}</div>
         {intent && <p className="interpreted">Interpreted filters: {interpretedFilters(intent)}</p>}
         {loading ? <p className="status" role="status">{mode === 'search' ? 'Looking through the catalog…' : 'Opening the collection…'}</p>
