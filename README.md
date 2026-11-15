@@ -80,6 +80,9 @@ See [website development](docs/website.md) for build, browser verification and
 deployment prerequisites. This milestone runs locally; AWS deployment and
 plot/mood matching remain upcoming.
 
+See [poster sourcing and storage](docs/posters.md) for the bundled artwork
+and the separate offline catalog-wide acquisition CLI.
+
 ## API
 
 - `GET /health` reports whether the API is running.

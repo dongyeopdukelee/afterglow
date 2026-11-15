@@ -198,7 +198,7 @@ class Importer:
                 "webp": b"RIFF",
             }
             if not body.startswith(signatures[extension]) or (
-                extension == "webp" and body[8:12] != b"WEBP"
+                extension == "webp" and bytes(body[8:12]) != b"WEBP"
             ):
                 return {"status": "error", "reason": "invalid_image_bytes"}
             digest = hashlib.sha256(body).hexdigest()
@@ -248,7 +248,8 @@ def id_crosswalk(
     if metadata is None:
         return {}
     ids: dict[str, set[int]] = {}
-    for mid, identifier in json.loads(mapping.read_text()) if mapping else []:
+    pairs: list[list[Any]] = json.loads(mapping.read_text()) if mapping else []
+    for mid, identifier in pairs:
         if isinstance(mid, str) and str(identifier).isdigit():
             ids.setdefault(mid, set()).add(int(identifier))
     films: dict[tuple[str, int | None], set[tuple[str, str]]] = {}

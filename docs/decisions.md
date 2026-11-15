@@ -49,7 +49,7 @@ when a decision is made, changed, or removed.
   queries from constrained parsed fields.
 - The vector-search step will combine semantic synopsis retrieval with the
   structured metadata filters.
-- User accounts, live external movie-data provider APIs, and
+- User accounts, visitor-time external movie-data provider APIs, and
   LLM-generated recommendation explanations are deferred.
 - Afterglow will have a public React/TypeScript website, built with Vite.
 - The website uses a light neumorphic visual direction inspired by Stripe:
@@ -72,19 +72,9 @@ when a decision is made, changed, or removed.
 - Poster acquisition is expanding across the complete CMU catalog using
   Wikimedia film identifiers and TMDB. Bulk downloads are an offline,
   resumable storage job, separate from the website's bundled starter snapshot.
-  External identifiers take precedence; title/year fallback requires a unique
-  exact match. Conflicting external identifiers and title/year joins shared by
-  distinct CMU source films block both matching paths and invalidate affected
-  checkpoint results when resumed with the metadata and ID map.
-  Normalized title/year collisions in the catalog block fallback even without
-  optional crosswalk inputs; independently resolved external IDs remain usable.
-  Older fallback results for those collisions are invalidated on resume.
-  Completed external-ID provenance survives omission of optional crosswalk
-  inputs unless supplied evidence proves a source-identity or mapping conflict.
-  Missing, ambiguous, and failed images remain explicit in the
-  coverage report. TMDB credentials stay in ignored local files and never
-  reach the frontend. TMDB attribution must be added before its images are
-  displayed in the website.
+  See [catalog-wide acquisition](posters.md#catalog-wide-acquisition) for
+  matching safeguards, checkpoint reconciliation, credential handling, and
+  the attribution required before displaying TMDB images.
 - New AWS resources and configuration defaults use `us-west-2` (Oregon).
   Previously recorded `us-east-1` readiness observations remain historical;
   this change does not migrate existing resources.

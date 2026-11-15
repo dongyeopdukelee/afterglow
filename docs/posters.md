@@ -19,15 +19,25 @@ python -m movie_db_llm.poster_import \
   --state-dir .tools/tmdb-posters
 ```
 
-The catalog is read-only. `jobs.sqlite3` checkpoints each result;
+The catalog is read-only. `jobs.sqlite3` checkpoints each result and rejects
+reuse with a changed catalog; use a separate state directory in that case.
 `coverage.json` records every film, including pending, missing, ambiguous, and
 failed matches; `manifest.json` records only downloaded images and includes
 the TMDB identifier, matching method, source URL, byte count, and SHA-256.
+`progress.json` contains counts by status. All three reports use atomic
+replacement.
 Images use content-addressed names under `images/`. Repeating the command
 continues pending work. `--retry-errors` retries failed records, and
 `--retry-review` revisits uncertain matches after improving the ID map. `--limit 10`
-is useful for a small real-provider smoke check. The default is eight workers
-and eight API requests per second, with shared backoff for rate limits.
+is useful for a small real-provider smoke check. `--workers` accepts 1–16
+workers (default eight), and `--requests-per-second` accepts a rate greater
+than zero and at most 20 (default eight). API requests share rate-limit
+backoff, including workers already waiting. Rejected authentication stops
+the campaign instead of classifying remaining films as missing.
+
+The token is sent only in Authorization headers to the fixed TMDB API host,
+never to the image CDN. Downloads accept only fixed-host JPEG, PNG, or WebP
+paths, validate format signatures, and are bounded to 2 MB per image.
 
 An optional `--id-map` JSON file contains `[freebase_id, tmdb_id]` pairs
 obtained from Wikidata's P646/P4947 properties. Supply `--cmu-metadata` with
@@ -132,14 +142,19 @@ distribution; a public bucket is not needed.
 
 The initial batch was uploaded on 2026-11-15 to the private Afterglow poster
 bucket in `us-west-2` (Oregon), with all four Block Public Access flags enabled,
-bucket-owner-enforced ownership, and SSE-S3 encryption. The stored objects
-are the 13 poster files under `posters/` and their manifest. The local operator
-record `.tools/poster-storage.json` records the exact bucket for this host;
-it contains no credentials. Local previews use the checked-in copies.
+bucket-owner-enforced ownership, and SSE-S3 encryption. That starter upload
+contained the bundled poster files under `posters/` and their manifest;
+it does not describe the bucket's later catalog-wide acquisitions. Stored
+batch reports, including those under `batches/wikimedia/` and `batches/tmdb/`,
+record coverage and provenance for the corresponding acquisition passes.
+The local operator record `.tools/poster-storage.json` records the exact
+bucket for this host; it contains no credentials. Local previews use the
+checked-in copies.
 
-The poster files total **1,526,686 bytes**. The retrieved us-west-2 AWS price
-catalog version `20261109154310` lists S3 Standard at USD 0.023/GB-month for
-the first storage tier, PUT/LIST at USD 0.005/1,000 requests, and GET at
+The bundled snapshot's poster files total **1,526,686 bytes**. The retrieved
+us-west-2 AWS price catalog version `20261109154310` lists S3 Standard at
+USD 0.023/GB-month for the first storage tier, PUT/LIST at
+USD 0.005/1,000 requests, and GET at
 USD 0.004/10,000 requests. The image bytes therefore cost about USD
 0.000033/month to store; the initial 13 image PUTs cost USD 0.000065.
 The small manifest, verification requests, and any later delivery/transfer
