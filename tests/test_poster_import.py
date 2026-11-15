@@ -10,6 +10,7 @@ import httpx
 import pytest
 
 from movie_db_llm import poster_import
+from movie_db_llm.cmu_parser import parse_catalog
 from movie_db_llm.poster_import import (
     AuthenticationError,
     Film,
@@ -176,6 +177,50 @@ def test_crosswalk_allows_repeated_rows_but_not_distinct_source_films(
     }
 
 
+@pytest.mark.parametrize(
+    ("title", "date", "year"),
+    [
+        ('"Manos": The Hands of Fate', " 1966-11-15 ", 1966),
+        ("\"She Shoulda Said 'No'!\"", "1949", 1949),
+        ('"Undated"', "unknown", None),
+        ('"Short date"', "12", None),
+        ('"Leading year"', "20010", 2001),
+    ],
+)
+@pytest.mark.parametrize("conflicting", [False, True])
+@pytest.mark.parametrize("padding", ["", " "])
+def test_crosswalk_joins_literal_titles_with_catalog_title_and_year_rules(
+    tmp_path: Path,
+    title: str,
+    date: str,
+    year: int | None,
+    conflicting: bool,
+    padding: str,
+) -> None:
+    metadata = tmp_path / "metadata.tsv"
+    metadata.write_text(
+        f"1\t/m/a\t{padding}{title}{padding}\t{date}\t\t\t{{}}\t{{}}\t{{}}\n",
+        encoding="utf-8",
+    )
+    summaries = tmp_path / "summaries.txt"
+    summaries.write_text("1\tA synopsis.\n", encoding="utf-8")
+    catalog = parse_catalog(metadata, summaries)
+    assert [(film.title, film.release_year) for film in catalog] == [
+        (title, year)
+    ]
+    mapping = tmp_path / "ids.json"
+    mapping.write_text(
+        json.dumps(
+            [["/m/a", "10"], ["/m/a", "20"]]
+            if conflicting
+            else [["/m/a", "10"]]
+        )
+    )
+    assert id_crosswalk(metadata, mapping) == {
+        (title, year): None if conflicting else 10
+    }
+
+
 @pytest.mark.parametrize("tmdb_id", [None, 10])
 @pytest.mark.parametrize("year", [None, 2001])
 def test_identity_conflicts_block_both_matching_paths(
@@ -203,8 +248,14 @@ def test_identity_conflicts_block_both_matching_paths(
 
 
 @pytest.mark.parametrize("retry", [False, True])
+@pytest.mark.parametrize("crosswalk_inputs", ["none", "metadata", "mapping"])
+@pytest.mark.parametrize("normalized_collisions", [False, True])
 def test_cli_reconciles_conflicts_in_every_checkpoint_status(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, retry: bool
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    retry: bool,
+    crosswalk_inputs: str,
+    normalized_collisions: bool,
 ) -> None:
     database = tmp_path / "catalog.sqlite3"
     statuses = [None, "stored", "no_poster", "error", "needs_review"]
@@ -212,6 +263,13 @@ def test_cli_reconciles_conflicts_in_every_checkpoint_status(
         (i + 1, "Shared" if i < 5 else "Undated", 2001 if i < 5 else None)
         for i in range(10)
     ] + [(11, "Mapped", 2002), (12, "Fallback", 2003)]
+    if normalized_collisions:
+        films[:5] = [
+            (i + 1, title, 2010)
+            for i, title in enumerate(
+                ["Frozen", "Frozen", "Fro-zen", "FROZEN", "Ｆｒｏｚｅｎ"]
+            )
+        ]
     with sqlite3.connect(database) as catalog:
         catalog.execute(
             "CREATE TABLE movies (id INTEGER, title TEXT, release_year INTEGER)"
@@ -256,10 +314,6 @@ def test_cli_reconciles_conflicts_in_every_checkpoint_status(
             str(database),
             "--state-dir",
             str(directory),
-            "--cmu-metadata",
-            str(metadata),
-            "--id-map",
-            str(mapping),
             "--workers",
             "1",
             "--requests-per-second",
@@ -267,6 +321,12 @@ def test_cli_reconciles_conflicts_in_every_checkpoint_status(
             "--limit",
             "2",
         ]
+        + (
+            ["--cmu-metadata", str(metadata)]
+            if crosswalk_inputs != "none"
+            else []
+        )
+        + (["--id-map", str(mapping)] if crosswalk_inputs == "mapping" else [])
         + (["--retry-errors", "--retry-review"] if retry else []),
     )
     seen: list[str] = []
@@ -285,15 +345,18 @@ def test_cli_reconciles_conflicts_in_every_checkpoint_status(
                 },
             )
         assert request.url.path == "/3/search/movie"
-        assert request.url.params["query"] == "Fallback"
+        query = request.url.params["query"]
+        assert query in {"Mapped", "Fallback"}
         return httpx.Response(
             200,
             json={
                 "results": [
                     {
-                        "id": 120,
-                        "title": "Fallback",
-                        "release_date": "2003-01-01",
+                        "id": 110 if query == "Mapped" else 120,
+                        "title": query,
+                        "release_date": "2002-01-01"
+                        if query == "Mapped"
+                        else "2003-01-01",
                         "poster_path": None,
                     }
                 ]
@@ -324,7 +387,11 @@ def test_cli_reconciles_conflicts_in_every_checkpoint_status(
         "needs_review": 10,
         "no_poster": 2,
     }
-    assert seen == ["/3/configuration", "/3/movie/110", "/3/search/movie"]
+    assert seen == [
+        "/3/configuration",
+        "/3/movie/110" if crosswalk_inputs == "mapping" else "/3/search/movie",
+        "/3/search/movie",
+    ]
     with sqlite3.connect(directory / "jobs.sqlite3") as state:
         results = [
             json.loads(row[0])
@@ -336,6 +403,202 @@ def test_cli_reconciles_conflicts_in_every_checkpoint_status(
         results
         == [{"status": "needs_review", "reason": "identity_conflict"}] * 10
     )
+
+
+def test_cli_preserves_external_ids_and_reconciles_unsafe_fallbacks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    films = [
+        (1, "11/11/11", 2011),
+        (2, "11-11-11", 2011),
+        (3, "Ａlpha", 2000),
+        (4, "alpha", 2000),
+        (5, '"Manos": The Hands of Fate', 1966),
+        (6, "\"She Shoulda Said 'No'!\"", 1949),
+        (7, "Other", 2001),
+        (8, "11 11 11", 2012),
+        (9, '"Undated"', None),
+    ]
+    database = tmp_path / "catalog.sqlite3"
+    with sqlite3.connect(database) as catalog:
+        catalog.execute(
+            "CREATE TABLE movies (id INTEGER, title TEXT, release_year INTEGER)"
+        )
+        catalog.executemany("INSERT INTO movies VALUES (?,?,?)", films)
+    metadata = tmp_path / "metadata.tsv"
+    metadata.write_text(
+        "".join(
+            f"{i}\t/m/{i}\t {title} \t {year or ''} \t\t\t{{}}\t{{}}\t{{}}\n"
+            for i, title, year in films
+        ),
+        encoding="utf-8",
+    )
+    mapping = tmp_path / "ids.json"
+    mapping.write_text(
+        json.dumps(
+            [
+                ["/m/1", "100"],
+                ["/m/3", "300"],
+                ["/m/4", "400"],
+                ["/m/5", "500"],
+                ["/m/6", "600"],
+                ["/m/6", "601"],
+                ["/m/9", "900"],
+            ]
+        )
+    )
+    directory = tmp_path / "state"
+    monkeypatch.setenv("TMDB_READ_ACCESS_TOKEN", "fake-token")
+    argv = [
+        "poster_import",
+        "--database",
+        str(database),
+        "--state-dir",
+        str(directory),
+        "--cmu-metadata",
+        str(metadata),
+        "--id-map",
+        str(mapping),
+        "--workers",
+        "1",
+        "--requests-per-second",
+        "20",
+    ]
+    monkeypatch.setattr(sys, "argv", argv)
+    seen: list[str] = []
+    image = b"\xff\xd8\xffsynthetic-poster"
+    external_dates = {
+        "/3/movie/100": "2011-01-01",
+        "/3/movie/300": "2000-01-01",
+        "/3/movie/400": "2000-01-01",
+        "/3/movie/500": "1966-01-01",
+        "/3/movie/900": "",
+    }
+
+    def provider(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "image.tmdb.org":
+            assert "authorization" not in request.headers
+            return httpx.Response(200, content=image)
+        seen.append(request.url.path)
+        if request.url.path == "/3/configuration":
+            return httpx.Response(200, json={})
+        if request.url.path in external_dates:
+            return httpx.Response(
+                200,
+                json={
+                    "id": int(request.url.path.rsplit("/", 1)[1]),
+                    "release_date": external_dates[request.url.path],
+                    "poster_path": "/Poster.jpg",
+                },
+            )
+        assert request.url.path == "/3/search/movie"
+        query = request.url.params["query"]
+        assert query in {"Other", "11 11 11"}
+        year = "2001" if query == "Other" else "2012"
+        assert request.url.params["year"] == year
+        return httpx.Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "id": 700 if query == "Other" else 800,
+                        "title": query,
+                        "release_date": year + "-01-01",
+                        "poster_path": "/Poster.jpg",
+                    }
+                ]
+            },
+        )
+
+    client_type = httpx.Client
+
+    def client(**kwargs: object) -> httpx.Client:
+        return client_type(transport=httpx.MockTransport(provider))
+
+    monkeypatch.setattr(poster_import.httpx, "Client", client)
+    assert poster_import.main() == 0
+    coverage = json.loads((directory / "coverage.json").read_text())
+    assert [
+        row["movie_id"] for row in coverage if row["status"] == "needs_review"
+    ] == [2, 6]
+    manifest = json.loads((directory / "manifest.json").read_text())
+    assert [row["movie_id"] for row in manifest] == [1, 3, 4, 5, 7, 8, 9]
+    assert [row["match_method"] for row in manifest] == [
+        "external_id",
+        "external_id",
+        "external_id",
+        "external_id",
+        "title_year",
+        "title_year",
+        "external_id",
+    ]
+    assert [(row["movie_id"], row["tmdb_id"]) for row in manifest] == [
+        (1, 100),
+        (3, 300),
+        (4, 400),
+        (5, 500),
+        (7, 700),
+        (8, 800),
+        (9, 900),
+    ]
+    assert all(
+        (directory / "images" / row["filename"]).read_bytes() == image
+        for row in manifest
+    )
+    assert seen == [
+        "/3/configuration",
+        "/3/movie/100",
+        "/3/movie/300",
+        "/3/movie/400",
+        "/3/movie/500",
+        "/3/search/movie",
+        "/3/search/movie",
+        "/3/movie/900",
+    ]
+    old_image = directory / "images" / "old.jpg"
+    old_image.write_bytes(image)
+    with sqlite3.connect(directory / "jobs.sqlite3") as state:
+        state.executemany(
+            "UPDATE jobs SET result=? WHERE movie_id=?",
+            [
+                (
+                    json.dumps(
+                        {
+                            "status": "stored",
+                            "match_method": "title_year",
+                            "filename": "old.jpg",
+                            "tmdb_id": 999,
+                        }
+                    ),
+                    identifier,
+                )
+                for identifier in [1, 2, 6]
+            ],
+        )
+    seen.clear()
+    assert poster_import.main() == 0
+    assert seen == ["/3/configuration"]
+    coverage = json.loads((directory / "coverage.json").read_text())
+    assert [
+        row["movie_id"] for row in coverage if row["status"] == "needs_review"
+    ] == [1, 2, 6]
+    assert (
+        json.loads((directory / "manifest.json").read_text()) == manifest[1:]
+    )
+    assert old_image.read_bytes() == image
+    seen.clear()
+    monkeypatch.setattr(sys, "argv", argv + ["--retry-review"])
+    assert poster_import.main() == 0
+    assert seen == ["/3/configuration", "/3/movie/100"]
+    assert json.loads((directory / "manifest.json").read_text()) == manifest
+    with sqlite3.connect(database) as catalog:
+        assert (
+            catalog.execute(
+                "SELECT id,title,release_year FROM movies ORDER BY id"
+            ).fetchall()
+            == films
+        )
 
 
 def test_waiting_workers_recheck_backoff_and_keep_request_spacing(

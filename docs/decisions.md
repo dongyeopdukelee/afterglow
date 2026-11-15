@@ -76,6 +76,9 @@ when a decision is made, changed, or removed.
   exact match. Conflicting external identifiers and title/year joins shared by
   distinct CMU source films block both matching paths and invalidate affected
   checkpoint results when resumed with the metadata and ID map.
+  Normalized title/year collisions in the catalog block fallback even without
+  optional crosswalk inputs; independently resolved external IDs remain usable.
+  Older fallback results for those collisions are invalidated on resume.
   Missing, ambiguous, and failed images remain explicit in the
   coverage report. TMDB credentials stay in ignored local files and never
   reach the frontend. TMDB attribution must be added before its images are

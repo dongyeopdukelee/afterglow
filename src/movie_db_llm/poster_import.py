@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import hashlib
 import json
 import os
@@ -12,12 +11,15 @@ import sqlite3
 import threading
 import time
 import unicodedata
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
 import httpx
+
+from movie_db_llm.cmu_parser import RELEASE_YEAR_PATTERN
 
 API = "https://api.themoviedb.org/3"
 IMAGES = "https://image.tmdb.org/t/p/w500"
@@ -248,10 +250,14 @@ def id_crosswalk(
         if isinstance(mid, str) and str(identifier).isdigit():
             ids.setdefault(mid, set()).add(int(identifier))
     films: dict[tuple[str, int | None], set[tuple[str, str]]] = {}
-    with metadata.open() as stream:
-        for row in csv.reader(stream, delimiter="\t"):
-            year = int(row[3][:4]) if row[3][:4].isdigit() else None
-            films.setdefault((row[2], year), set()).add((row[0], row[1]))
+    with metadata.open(encoding="utf-8") as stream:
+        for line in stream:
+            row = line.rstrip("\n").split("\t")
+            match = RELEASE_YEAR_PATTERN.match(row[3].strip())
+            year = int(match.group(1)) if match else None
+            films.setdefault((row[2].strip(), year), set()).add(
+                (row[0], row[1])
+            )
     crosswalk: dict[tuple[str, int | None], int | None] = {}
     for key, identities in films.items():
         if len(identities) != 1:
@@ -318,18 +324,22 @@ def main() -> int:
     with sqlite3.connect(
         args.database.resolve().as_uri() + "?mode=ro", uri=True
     ) as catalog:
-        films = [
-            Film(
-                i,
-                t,
-                y,
-                crosswalk.get((t, y)),
-                (t, y) in crosswalk and crosswalk[(t, y)] is None,
-            )
-            for i, t, y in catalog.execute(
+        catalog_films = list(
+            catalog.execute(
                 "SELECT id,title,release_year FROM movies ORDER BY id"
             )
-        ]
+        )
+    match_counts = Counter(
+        (normalized(title), year) for _, title, year in catalog_films
+    )
+    films: list[Film] = []
+    for identifier, title, year in catalog_films:
+        tmdb_id = crosswalk.get((title, year))
+        identity_conflict = tmdb_id is None and (
+            (title, year) in crosswalk
+            or match_counts[(normalized(title), year)] > 1
+        )
+        films.append(Film(identifier, title, year, tmdb_id, identity_conflict))
     with sqlite3.connect(directory / "jobs.sqlite3") as state:
         state.execute("PRAGMA journal_mode=WAL")
         state.execute(
@@ -360,7 +370,8 @@ def main() -> int:
                 "WHERE json_extract(result,'$.status')='needs_review'"
             )
         state.executemany(
-            "UPDATE jobs SET result=? WHERE movie_id=?",
+            "UPDATE jobs SET result=? WHERE movie_id=? "
+            "AND (? OR json_extract(result,'$.match_method')='title_year')",
             [
                 (
                     json.dumps(
@@ -370,9 +381,11 @@ def main() -> int:
                         }
                     ),
                     film.id,
+                    film.identity_conflict,
                 )
                 for film in films
                 if film.identity_conflict
+                or match_counts[(normalized(film.title), film.year)] > 1
             ],
         )
         state.commit()

@@ -35,19 +35,29 @@ the original `movie.metadata.tsv` to join those IDs to the catalog. Conflicting
 identifiers and title/year keys shared by distinct CMU source films are marked
 `needs_review` with reason `identity_conflict`; neither external-ID matching
 nor title/year fallback can acquire those films. Source collisions are checked
-even when only `--cmu-metadata` is supplied. Without an ID, matching requires a
-unique exact normalized title and release year; a missing year requires an external ID.
+even when only `--cmu-metadata` is supplied. Metadata uses literal tab fields,
+preserving quoted titles and applying the catalog's title/year conversion.
+The complete catalog is also checked for collisions under the matcher's title
+normalization and release year, even without either optional file. These
+collisions block title/year fallback while independently resolved external IDs
+remain usable. Without an ID, matching requires a unique exact normalized
+title and release year; a missing year requires an external ID.
 An unavailable or uncertain match is reported, never replaced with another
 film's image. No source can guarantee a poster for every film.
 
 To reconcile an older checkpoint, rerun the importer with the same state
-directory and the CMU metadata and ID map. Every identity conflict is
-reclassified before pending work is selected, including previously stored,
-unavailable, and failed results, regardless of retry flags or `--limit`.
+directory, supplying the CMU metadata and ID map for external-ID resolution.
+Catalog collisions are detected even when those files are omitted. Every
+identity conflict is reclassified before pending work is selected, including
+previously stored, unavailable, and failed results, regardless of retry flags
+or `--limit`.
 The refreshed manifest excludes those records; existing image files remain
 on disk. Replace the stored batch reports after the operator reviews the
 reconciliation. This correction changes acquisition semantics, so an older
 running process must finish or be paused by its operator before reconciliation.
+Stored title/year fallback results for colliding catalog keys also move to
+review, even if an external ID is now available. Safe external-ID results are
+preserved. Use a subsequent `--retry-review` pass to acquire newly resolved IDs.
 After correcting source identities or mappings, `--retry-review` can retry
 records whose conflicts have been resolved.
 
