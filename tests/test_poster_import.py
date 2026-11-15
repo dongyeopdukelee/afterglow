@@ -83,6 +83,48 @@ def test_acquisition_downloads_bytes_and_keeps_token_off_image_request(
 
 
 @pytest.mark.parametrize(
+    ("image", "valid"),
+    [
+        (b"RIFF\x10\x00\x00\x00WAVEfmt not a WebP image", False),
+        (b"RIFF\x10\x00\x00\x00AVI LIST", False),
+        (b"RIFF\x10\x00\x00\x00WEB", False),
+        (b"RIFFWEBP\x00\x00\x00\x00", False),
+        (b"FAKE\x10\x00\x00\x00WEBP", False),
+        (b"RIFF\x10\x00\x00\x00WEBPVP8 poster data", True),
+    ],
+    ids=["wave", "avi", "truncated", "misplaced", "not-riff", "webp"],
+)
+def test_webp_acquisition_checks_riff_form_type(
+    tmp_path: Path, image: bytes, valid: bool
+) -> None:
+    # The WebP container contract requires RIFF and WEBP at offsets 0 and 8.
+    # Other RIFF formats must never become stored posters.
+    def provider(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "api.themoviedb.org":
+            return httpx.Response(
+                200,
+                json={
+                    "id": 10,
+                    "release_date": "2000-01-01",
+                    "poster_path": "/Poster.webp",
+                },
+            )
+        return httpx.Response(200, content=image)
+
+    with httpx.Client(transport=httpx.MockTransport(provider)) as client:
+        result = Importer(client, "fake-token", tmp_path).acquire(
+            Film(1, "Film", 2000, 10)
+        )
+    if valid:
+        assert result["status"] == "stored"
+        assert (tmp_path / result["filename"]).read_bytes() == image
+        assert result["sha256"] == hashlib.sha256(image).hexdigest()
+    else:
+        assert result == {"status": "error", "reason": "invalid_image_bytes"}
+        assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize(
     "poster", ["//evil.example/a.jpg", "/../a.jpg", "/a.svg"]
 )
 def test_untrusted_image_paths_never_trigger_download(

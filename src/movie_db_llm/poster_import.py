@@ -197,7 +197,9 @@ class Importer:
                 "png": b"\x89PNG\r\n\x1a\n",
                 "webp": b"RIFF",
             }
-            if not body.startswith(signatures[extension]):
+            if not body.startswith(signatures[extension]) or (
+                extension == "webp" and body[8:12] != b"WEBP"
+            ):
                 return {"status": "error", "reason": "invalid_image_bytes"}
             digest = hashlib.sha256(body).hexdigest()
             filename = digest[:20] + "." + extension
