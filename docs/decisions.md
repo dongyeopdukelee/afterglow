@@ -29,7 +29,7 @@ when a decision is made, changed, or removed.
   release: structured catalog retrieval first, then semantic vector search.
 - The structured-retrieval step will use an LLM to parse a user request and
   the application to query the catalog database.
-- The request-parsing LLM will be Qwen3.5 2B, running locally through Ollama
+- The local-development request-parsing LLM will be Qwen3.5 2B through Ollama
   using the `qwen3.5:2b` model tag.
 - Structured request intent will support catalog genre labels, an optional
   release-year range, and title keywords.
@@ -49,8 +49,20 @@ when a decision is made, changed, or removed.
   queries from constrained parsed fields.
 - The vector-search step will combine semantic synopsis retrieval with the
   structured metadata filters.
-- User accounts, live external movie-data provider APIs, a frontend, and
+- User accounts, live external movie-data provider APIs, and
   LLM-generated recommendation explanations are deferred.
+- Afterglow will have a public React/TypeScript website, built with Vite.
+- The public demo targets about 720 recommendation requests/month and a
+  $10/month recurring budget, excluding up to $20/year upfront for a custom
+  domain. The exact domain and registrar quote remain unselected.
+- Production inference will use on-demand Amazon Bedrock; local development
+  retains Ollama. Models will be selected after accuracy and token-cost checks.
+- The website will remain online when a conservative usage quota pauses
+  recommendation searches. Budget alerts alone are not a spending cap.
+- Deployment will use the owner's existing AWS account without assuming signup
+  credits. Lambda/API Gateway, S3/CloudFront and a read-only catalog snapshot
+  are the target hosting approach; vector-storage compatibility and costs must
+  be validated before provisioning.
 
 ## Technology
 

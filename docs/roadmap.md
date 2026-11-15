@@ -12,7 +12,7 @@ with dogs in it" becoming grounded movie recommendations.
 
 ## 2. Catalog API
 
-- Add a movie-detail endpoint with the full synopsis.
+- [x] Add a movie-detail endpoint with the full synopsis.
 - Add title search and genre filtering.
 - [x] Add `limit`/`offset` pagination to catalog browsing.
 
@@ -52,3 +52,12 @@ Build on the completed structured-retrieval step above.
 - Create a representative set of recommendation queries.
 - Measure retrieval quality, cost, and latency.
 - Handle ambiguous and unsupported requests safely.
+
+## 8. Public website and AWS deployment
+
+- [x] Add the first local React/TypeScript website with browsing, structured
+  recommendation input and full movie synopses, plus mobile/desktop tests.
+- Authenticate the existing AWS account and choose region/domain.
+- Evaluate on-demand Bedrock parsing and embedding models with measured cost.
+- Implement serverless hosting, semantic retrieval and fail-closed quotas.
+- Deploy and verify the complete public request path before announcing it.

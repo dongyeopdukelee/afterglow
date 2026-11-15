@@ -63,7 +63,10 @@ The API is available at `http://127.0.0.1:8000`.
 
 ## API
 
+The first local website is documented in [website development](docs/website.md).
+
 - `GET /health` reports whether the API is running.
+- `GET /movies/{movie_id}` returns a movie card and its full synopsis, or 404.
 - `GET /movies` returns an ordered page of imported movie cards. It accepts
   `limit` (default 20, maximum 100) and `offset` (default 0) query parameters.
 - `POST /recommendations` interprets a natural-language request using local
