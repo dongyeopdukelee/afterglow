@@ -7,13 +7,11 @@ implemented, with live validation still pending; see
 Semantic indexing/search, usage quotas and AWS infrastructure remain subsequent
 work; the UI labels plot/mood matching as unavailable until implemented.
 
-The interface uses a light neumorphic theme: soft raised film cards, an inset
-search field, violet controls and original abstract CSS artwork. Navigation
-links jump directly to the catalog or search, and the first keyboard stop
-lets visitors skip to the films. Search instructions describe the supported
-genre, year and title filters. Shadows supplement visible control boundaries
-and focus outlines; reduced-motion settings disable smooth scrolling and
-transitions.
+See the [product decisions](decisions.md#product-scope) for the visual direction.
+Navigation links jump directly to the catalog or search, and the first keyboard
+stop lets visitors skip to the films. Search instructions follow the supported
+[API filters](../README.md#api). Reduced-motion settings disable smooth
+scrolling and transitions.
 
 ## Run locally
 
@@ -71,9 +69,9 @@ AFTERGLOW_API_PROXY=http://127.0.0.1:8001 \
 This keeps the original website on 5174 available for comparison. Vite updates
 the redesign browser tab as frontend source changes; keep its process running.
 
-On the current WSL host, these services run in the `afterglow-dev` tmux window
-from `/tmp/afterglow-website`. A third pane runs the existing local Ollama
-installation and model cache, without paid API calls or model downloads.
+On the current WSL host, the original preview and API run in the `afterglow-dev`
+tmux window from `/tmp/afterglow-website`. A third pane runs the existing local
+Ollama installation and model cache, without paid API calls or model downloads.
 Closing the browser or detaching tmux does not
 stop them; stopping WSL or rebooting does. To view logs, select that window
 with `tmux select-window -t main:afterglow-dev`. To stop the preview, press
