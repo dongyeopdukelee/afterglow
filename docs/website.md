@@ -136,7 +136,7 @@ To select Bedrock explicitly on the WSL host:
 
 ```sh
 AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
-AWS_PROFILE=afterglow AWS_REGION=us-east-1 INTENT_PROVIDER=bedrock \
+AWS_PROFILE=afterglow AWS_REGION=us-west-2 INTENT_PROVIDER=bedrock \
   uv run uvicorn movie_db_llm.main:app --reload
 ```
 

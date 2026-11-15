@@ -3,6 +3,11 @@
 Checked on 2026-11-15 UTC in `us-east-1` and `us-west-2`. These are observations,
 not a claim that public deployment or live model-quality validation is complete.
 
+The default AWS region is now `us-west-2` for the application, the WSL
+`afterglow` / `afterglow-source` profiles, and new WSL zsh sessions. Explicit
+region overrides still work. This setting does not move existing resources,
+enable hosted inference by default, or resolve the runtime throttling below.
+
 ## Existing-capacity assessment
 
 An additional read-only inventory on 2026-11-15 UTC compared `us-east-1` and
@@ -44,8 +49,9 @@ verified working configuration**:
 Automatic retries were disabled for these probes. The tiny no-tools requests
 distinguish the runtime block from a large prompt or a forced-tool schema issue;
 they do not establish its underlying cause. No live model-quality pass, vector
-quality measurement or latency benchmark was obtained. Application defaults and
-the local preview were not switched to either candidate. Diagnose the mismatch
+quality measurement or latency benchmark was obtained. The application still
+defaults to local Ollama; changing the default AWS region does not switch the
+preview to a hosted provider. Diagnose the mismatch
 between listed quotas and runtime rejection before accepting a hosted model;
 do not interpret nonzero listings as proof that the earlier access problem has
 cleared. Cohere Embed English was also inspected, but its agreement reported

@@ -57,6 +57,8 @@ when a decision is made, changed, or removed.
   domain. The exact domain and registrar quote remain unselected.
 - Production inference will use on-demand Amazon Bedrock; local development
   retains Ollama. Models will be selected after accuracy and token-cost checks.
+- The default AWS region is `us-west-2` (Oregon). Explicit user selections and
+  service-specific endpoint requirements may override it.
 - Select hosted inference from existing account quotas; quota-increase requests
   are out of scope for the current deployment phase. A positive quota listing
   does not replace successful live invocation and quality checks.

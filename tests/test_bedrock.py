@@ -39,7 +39,7 @@ def aws_client() -> Generator[BedrockRuntimeClient]:
         "BedrockRuntimeClient",
         boto3.client(
             "bedrock-runtime",
-            region_name="us-east-1",
+            region_name="us-west-2",
             aws_access_key_id="testing",
             aws_secret_access_key="testing",
         ),
