@@ -57,7 +57,6 @@ Build on the completed structured-retrieval step above.
 
 - [x] Add the first local React/TypeScript website with browsing, structured
   recommendation input and full movie synopses, plus mobile/desktop tests.
-- Authenticate the existing AWS account and choose region/domain.
 - [x] Verify the `afterglow` deployment role and configure a WSL-only profile.
 - [x] Add an optional Bedrock intent adapter with deterministic API/catalog
   tests; Ollama remains the default. Live hosted validation is still pending.
@@ -66,3 +65,5 @@ Build on the completed structured-retrieval step above.
   recorded in [AWS readiness](aws-readiness.md).
 - Implement serverless hosting, semantic retrieval and fail-closed quotas.
 - Deploy and verify the complete public request path before announcing it.
+- Select a custom domain following the
+  [release gates](aws-readiness.md#gates-before-continuing-to-public-release).

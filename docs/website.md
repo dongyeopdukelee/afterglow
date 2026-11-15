@@ -1,9 +1,11 @@
 # Afterglow website
 
 This first website slice runs locally against the existing FastAPI catalog.
-It is not a public AWS deployment. Production Bedrock integration, semantic
-indexing/search, usage quotas and AWS infrastructure are subsequent work;
-the UI explicitly labels plot/mood matching as unavailable until implemented.
+It is not a public AWS deployment. An optional Bedrock parsing adapter is
+implemented, with live validation still pending; see
+[AWS readiness](aws-readiness.md).
+Semantic indexing/search, usage quotas and AWS infrastructure remain subsequent
+work; the UI labels plot/mood matching as unavailable until implemented.
 
 ## Run locally
 
@@ -48,13 +50,15 @@ and test fixtures are development-only, not shipped to visitors.
 
 - AWS CLI and an authenticated AWS profile in the intended account/region.
   Do not paste AWS secrets into chat or commit them to this repository.
-- Exact domain availability and an approved registration/renewal quote within
-  the [selected budget](decisions.md#product-scope).
 - Measured Bedrock model quality/token costs and vector-store filter
   compatibility, as required by the [deployment decisions](decisions.md#product-scope).
 - Server-enforced usage limits before exposing paid anonymous inference;
   a 429 display is not itself a quota implementation. Follow the availability
   and spending constraints in the [product decisions](decisions.md#product-scope).
+
+Follow the [release gates](aws-readiness.md#gates-before-continuing-to-public-release)
+for domain timing. Before buying it, verify availability and obtain an approved
+registration/renewal quote within the [selected budget](decisions.md#product-scope).
 
 ### Deployment administrator profile
 
@@ -78,7 +82,7 @@ or API runtime. No hosting resources have been provisioned by this role setup.
 
 ### Hosted intent parsing (not yet deployed)
 
-Ollama remains the default. To select Bedrock explicitly on the WSL host:
+To select Bedrock explicitly on the WSL host:
 
 ```sh
 AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
@@ -86,13 +90,11 @@ AWS_PROFILE=afterglow AWS_REGION=us-east-1 INTENT_PROVIDER=bedrock \
   uv run uvicorn movie_db_llm.main:app --reload
 ```
 
-The candidate `BEDROCK_MODEL_ID` is `us.amazon.nova-micro-v1:0` (override with
-that environment variable when evaluating another compatible model). Parsing
-uses one bounded Converse call, at most 512 output tokens, a bounded input
-context, and no automatic paid retries. Both providers validate the same intent
-contract and apply year comparisons in application code. Unknown providers do
-not fall back silently. Hosted failures return 503 while catalog browsing and
-movie details stay available; malformed/truncated model output returns 502.
+See [inference configuration](../README.md#inference-configuration) for provider
+settings and defaults, and the [API contract](../README.md#api) for failure
+responses. Hosted parsing uses one bounded Converse call, at most 512 output
+tokens, a bounded input context, and no automatic paid retries. Catalog browsing,
+movie details and health remain available when inference fails.
 
 This is adapter support, not proof of model quality or a public deployment.
 See [AWS readiness](aws-readiness.md) for live-check results and pending gates.
@@ -100,7 +102,7 @@ Deterministic regression checks run without AWS credentials or paid calls:
 
 ```sh
 uv run pytest tests/test_bedrock.py tests/test_recommendations.py
-uv run pyright
+uv run pyright scripts/check_bedrock.py
 ```
 
 The catalog attribution remains visible in the website. Covers are decorative

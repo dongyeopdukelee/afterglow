@@ -23,7 +23,7 @@ def main() -> int:
     parser.parse_args()
     try:
         model = BedrockIntentParser(bedrock_client())
-    except (BotoCoreError, ClientError):
+    except BotoCoreError, ClientError:
         print(
             json.dumps(
                 {
