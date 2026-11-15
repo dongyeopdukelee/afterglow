@@ -26,17 +26,20 @@ python3 scripts/import_posters.py
 
 The importer is bounded to the reviewed list and 2 MB per response; it refuses
 unreviewed licenses and non-image formats. It never creates a bucket or makes
-an object public. To upload the batch to an existing private project bucket,
-configure the WSL-only AWS profile described in `website.md` and run:
+an object public. To upload the images to an existing private project bucket,
+use the WSL-only [deployment profile](website.md#deployment-administrator-profile):
 
 ```sh
-python3 scripts/import_posters.py --bucket "$POSTER_BUCKET" --region us-west-2
+AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
+AWS_PROFILE=afterglow \
+  python3 scripts/import_posters.py --bucket "$POSTER_BUCKET" --region us-west-2
 ```
 
 Restart the API after changing the manifest. Vite reloads its imported manifest
-and image references automatically. Upload the updated manifest to the same
-S3 prefix when updating the stored batch. A future public deployment can serve
-these objects through its frontend distribution; a public bucket is not needed.
+and image references automatically. The importer uploads only images; upload
+the updated manifest separately to the same S3 prefix when updating the stored
+batch. A future public deployment can serve these objects through its frontend
+distribution; a public bucket is not needed.
 
 ## Stored batch and costs
 

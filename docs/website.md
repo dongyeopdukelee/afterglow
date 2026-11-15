@@ -4,8 +4,9 @@ This first website slice runs locally against the existing FastAPI catalog.
 It is not a public AWS deployment. An optional Bedrock parsing adapter is
 implemented, with live validation still pending; see
 [AWS readiness](aws-readiness.md).
-Semantic indexing/search, usage quotas and AWS infrastructure remain subsequent
-work; the UI labels plot/mood matching as unavailable until implemented.
+Semantic indexing/search, usage quotas and public hosting infrastructure remain
+subsequent work; the UI labels plot/mood matching as unavailable until
+implemented.
 
 See the [product decisions](decisions.md#product-scope) for the visual direction.
 The first keyboard stop lets visitors skip to the films. The header keeps
@@ -182,11 +183,10 @@ uv run pyright scripts/check_bedrock.py
 
 The opening selection shuffles on a new visit; its seed stays fixed while
 paging. A `?seed=332` URL makes a visit reproducible. Verified poster matches
-appear first, then the complete remaining catalog; recommendation ordering
-does not change. The API retains alphabetical ordering when no seed is given.
+appear first, then the complete remaining catalog. See the
+[API contract](../README.md#api) for ordering outside website browsing.
 
 The catalog attribution remains visible. [Poster sourcing and S3 storage](posters.md)
-describe the 13 reviewed Commons matches, local copies, and visible credits.
-The two hero films are non-clickable illustrations of the collection. Other
-films use abstract artwork until a verified match is added; image failures
-also fall back to that artwork.
+describes the reviewed Commons snapshot, local copies, visible credits, and
+artwork fallback. The two hero films are non-clickable illustrations of the
+collection.

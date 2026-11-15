@@ -53,7 +53,7 @@ def main() -> int:
     sources = json.loads((ROOT / "data/posters/sources.json").read_text())
     destination = ROOT / "frontend/public/posters"
     destination.mkdir(parents=True, exist_ok=True)
-    entries = []
+    entries: list[dict[str, object]] = []
     for source in sources:
         params = urllib.parse.urlencode(
             {
@@ -90,7 +90,7 @@ def main() -> int:
         filename = f"{checksum[:20]}.{extension}"
         path = destination / filename
         path.write_bytes(body)
-        entry = {
+        entry: dict[str, object] = {
             "title": source["title"],
             "year": source["year"],
             "filename": filename,

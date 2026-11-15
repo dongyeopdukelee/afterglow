@@ -85,6 +85,7 @@ plot/mood matching remain upcoming.
 - `GET /movies/{movie_id}` returns a movie card and its full synopsis, or 404.
 - `GET /movies` returns an ordered page of imported movie cards. It accepts
   `limit` (default 20, maximum 100) and `offset` (default 0) query parameters.
+  Without a seed, movies are ordered by title and identifier.
   An optional `seed` (0–2147483647) selects repeatable shuffled discovery,
   with verified poster matches first. Keep the same seed between pages.
 - `POST /recommendations` interprets a natural-language request using the
@@ -113,7 +114,8 @@ The response uses an `items` envelope with lightweight movie cards and an
 Title matching uses literal, case-insensitive substrings. Exact years, decades,
 since, and until use inclusive year bounds; before and after use exclusive
 bounds. Undated movies only match when no year filter is requested.
-Results are ordered by title and identifier, with no relevance ranking yet.
+Recommendation results are ordered by title and identifier, with no relevance
+ranking yet.
 No matching movies returns an empty `items` list without relaxing filters.
 
 This step supports genres, release years, and title keywords. Requests for
@@ -137,7 +139,7 @@ The API never executes model-generated SQL.
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Ollama service URL |
 | `OLLAMA_MODEL` | `qwen3.5:2b` | Locally downloaded model tag |
 | `OLLAMA_TIMEOUT_SECONDS` | `120` | HTTP inference timeout in seconds |
-| `AWS_REGION` | `us-west-2` | AWS client region (Oregon) |
+| `AWS_REGION` | `us-west-2` | Bedrock client region (Oregon) |
 | `BEDROCK_MODEL_ID` | `us.amazon.nova-micro-v1:0` | Bedrock model or inference profile supporting the required Converse tool contract |
 
 ## Tests and checks
