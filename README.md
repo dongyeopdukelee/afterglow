@@ -111,6 +111,9 @@ Local inference configuration:
 
 ## Tests and checks
 
+Daily automated observations and controls are documented in
+[daily project health](docs/daily-health.md).
+
 ```bash
 uv run pytest
 uv run ruff check .
