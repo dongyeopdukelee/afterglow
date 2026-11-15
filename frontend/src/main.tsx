@@ -2,7 +2,7 @@ import { StrictMode, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { detail, request, results } from './api';
 import type { Detail, Intent, Movie } from './api';
-import { posterFor, posters, posterUrl } from './posters';
+import { posterFor, posterUrl } from './posters';
 import './style.css';
 
 const examples = ['Comedies from the 1990s', 'Thrillers released after 2000', 'Movies with love in the title'];
@@ -157,7 +157,6 @@ function App() {
       </section>
     </main>
     <footer><div className="footer-top"><span className="brand">afterglow</span><p>Good films leave a little afterglow.</p></div><p className="attribution">Catalog and plot summaries: <a href="https://www.cs.cmu.edu/~ark/personas/" target="_blank" rel="noreferrer">CMU Movie Summary Corpus</a> · <a href="https://creativecommons.org/licenses/by-sa/3.0/us/" target="_blank" rel="noreferrer">CC BY-SA 3.0 US</a>. Posters from Wikimedia Commons; abstract artwork fills unmatched covers.</p>
-      <details className="poster-credits"><summary>Poster credits</summary><ul>{posters.map(poster => <li key={poster.filename}><a href={poster.source_url} target="_blank" rel="noreferrer">{poster.title} ({poster.year})</a><span>{poster.author} · {poster.license}</span></li>)}</ul></details>
     </footer>
     {selected && <MovieDialog key={selected.id} movie={selected} close={() => setSelected(undefined)} />}
   </>;

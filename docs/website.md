@@ -19,6 +19,15 @@ scrolling and transitions.
 For dependencies, catalog setup and API/website startup commands, see
 [local development](../README.md#local-development).
 
+Typography is self-hosted: Satoshi for headings/wordmarks and DM Sans for
+body text and controls. Run `npm run fonts` in `frontend` before the first
+development session; `npm run build` also performs this setup. It downloads
+the unmodified Satoshi webfont directly from Fontshare and verifies its pinned
+checksum. That font binary is ignored by Git; its ITF license permits the
+project's self-hosted use and limits redistribution. DM Sans's Latin and
+extended Latin webfonts are included under the SIL Open Font License. Font
+sources and notices are in `frontend/public/fonts/README.md`.
+
 ### Interactive preview during development
 
 Keep the interactive website on <http://localhost:5174> and its API on
@@ -187,6 +196,6 @@ appear first, then the complete remaining catalog. See the
 [API contract](../README.md#api) for ordering outside website browsing.
 
 The catalog attribution remains visible. [Poster sourcing and S3 storage](posters.md)
-describes the reviewed Commons snapshot, local copies, visible credits, and
+describes the reviewed Commons snapshot, local copies, provenance records, and
 artwork fallback. The two hero films are non-clickable illustrations of the
 collection.

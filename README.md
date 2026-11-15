@@ -69,6 +69,7 @@ To run the local website, use Node.js 24+ and start Vite in another terminal:
 ```bash
 cd frontend
 npm ci --ignore-scripts
+npm run fonts
 npm run dev
 ```
 

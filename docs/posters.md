@@ -4,8 +4,8 @@ The first image batch contains 13 title-and-year matches from Wikimedia
 Commons. The search candidates were reviewed rather than accepting the first
 search result: results included unrelated books, logos, and an AI-generated
 Nosferatu cover, which were excluded. These are source-identified public-domain
-posters. Attribution and the Commons license record remain available under
-**Poster credits** in the website footer.
+posters. Attribution and the Commons license records remain in the asset
+manifest and source files; the page does not include a separate credits panel.
 
 `data/posters/sources.json` records the reviewed film/version/file choices.
 `src/movie_db_llm/posters.json` records the source page, author, image URL,

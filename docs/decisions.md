@@ -54,8 +54,11 @@ when a decision is made, changed, or removed.
 - Afterglow will have a public React/TypeScript website, built with Vite.
 - The website uses a light neumorphic visual direction inspired by Stripe:
   Pink Orchid (`#cdb4db`), Blush Pop (`#ffafcc`), and Sky Blue (`#a2d2ff`),
-  with tinted raised surfaces, inset search controls, and bold sans-serif
-  typography. Darker shades and neutral text preserve readable contrast.
+  with blue as the primary surface color and pink as the accent. Surfaces are
+  raised and search controls inset. Satoshi is used for
+  display text and DM Sans for body text and controls; fonts are self-hosted.
+  Satoshi's restricted binary stays out of Git and is obtained from Fontshare
+  during font setup. Darker shades and neutral text preserve readable contrast.
   The wordmark is plain text, without a separate logo symbol. Interactive
   controls retain visible boundaries and keyboard focus indicators.
 - New visits shuffle the catalog with a per-visit seed; pagination keeps that

@@ -5,6 +5,8 @@
   "type": "module",
   "engines": { "node": ">=24" },
   "scripts": {
+    "fonts": "python3 ../scripts/fetch_satoshi.py",
+    "prebuild": "npm run fonts",
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "test": "playwright test",
