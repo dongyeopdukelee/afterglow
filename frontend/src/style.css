@@ -51,13 +51,13 @@ button:disabled { opacity: .52; cursor: default; }
 button, a, input, [tabindex] { outline-offset: 5px; }
 :focus-visible { outline: 3px solid var(--accent); }
 header, main, footer { width: min(100% - 96px, 1152px); margin-inline: auto; }
-header { min-height: 108px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+header { min-height: 84px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
 .brand { display: inline-flex; align-items: center; gap: 11px; font-size: 28px; line-height: 1; letter-spacing: -1.4px; font-weight: 750; text-decoration: none; }
 .arrow-icon { width: 18px; height: 18px; flex-shrink: 0; }
 .skip-link { position: absolute; z-index: 10; top: 12px; left: 12px; padding: 12px 20px; border-radius: 10px; background: white; transform: translateY(-180%); }
 .skip-link:focus { transform: translateY(0); }
 
-.hero { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 32px; align-items: center; padding: 67px 0 70px; }
+.hero { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 32px; align-items: center; padding: 20px 0 54px; }
 .hero-copy { min-width: 0; position: relative; z-index: 1; }
 .eyebrow { display: flex; align-items: center; gap: 9px; text-transform: uppercase; letter-spacing: .15em; font-size: 11px; line-height: 1.6; font-weight: 700; color: var(--accent); margin: 0 0 22px; }
 .hero .eyebrow { letter-spacing: .025em; text-transform: none; font-size: 12px; }
@@ -160,7 +160,7 @@ dialog::backdrop { background: #27446070; backdrop-filter: blur(5px); }
 
 @media (max-width: 1100px) {
   header, main, footer { width: calc(100% - 64px); }
-  .hero { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 20px; padding-top: 48px; }
+  .hero { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 20px; padding-top: 20px; }
   .cinema-ticket { width: 185px; }
   .ticket-back { top: 25px; left: 0; }
   .ticket-front { top: 70px; right: 0; }
@@ -168,7 +168,7 @@ dialog::backdrop { background: #27446070; backdrop-filter: blur(5px); }
   .movie-grid { gap: 20px; }
 }
 @media (max-width: 850px) {
-  .hero { grid-template-columns: minmax(0, 1fr); padding-top: 38px; gap: 0; }
+  .hero { grid-template-columns: minmax(0, 1fr); padding-top: 20px; gap: 0; }
   .hero-copy { max-width: 660px; }
   .hero-scene { display: none; }
   h1 { font-size: 70px; }
@@ -178,9 +178,9 @@ dialog::backdrop { background: #27446070; backdrop-filter: blur(5px); }
 }
 @media (max-width: 620px) {
   header, main, footer { width: calc(100% - 40px); }
-  header { min-height: 88px; gap: 15px; }
+  header { min-height: 72px; gap: 15px; }
   .brand { font-size: 25px; gap: 9px; }
-  .hero { padding: 30px 0 40px; }
+  .hero { padding: 16px 0 36px; }
   .hero .eyebrow { font-size: 10px; gap: 8px; margin-bottom: 23px; }
   .eyebrow-dot { width: 5px; height: 5px; box-shadow: 0 0 0 4px #ffafcc; }
   h1 { font-size: clamp(42px, 11.3vw, 68px); letter-spacing: -.065em; margin-bottom: 21px; }
