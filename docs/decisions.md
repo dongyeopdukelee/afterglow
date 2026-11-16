@@ -49,9 +49,35 @@ when a decision is made, changed, or removed.
   queries from constrained parsed fields.
 - The vector-search step will combine semantic synopsis retrieval with the
   structured metadata filters.
-- User accounts, live external movie-data provider APIs, and
+- User accounts, visitor-time external movie-data provider APIs, and
   LLM-generated recommendation explanations are deferred.
 - Afterglow will have a public React/TypeScript website, built with Vite.
+- The website uses a light neumorphic visual direction inspired by Stripe:
+  Cornsilk (`#fefae0`) as the base, Dry Sage (`#ccd5ae`) for supporting
+  surfaces, and Light Bronze (`#d4a373`) for accents. Surfaces are
+  raised and search controls inset. Satoshi is used for
+  display text and DM Sans for body text and controls; fonts are self-hosted.
+  Satoshi's restricted binary stays out of Git and is obtained from Fontshare
+  during font setup. Darker shades and neutral text preserve readable contrast.
+  The wordmark is plain text, without a separate logo symbol. Interactive
+  controls retain visible boundaries and keyboard focus indicators.
+- New visits shuffle the catalog with a per-visit seed; pagination keeps that
+  seed so films are not repeated or skipped. Verified poster matches appear
+  first, followed by the rest of the catalog. The unseeded API remains
+  alphabetical and recommendation results keep their existing ordering.
+- Movie posters use a small, reviewed Wikimedia Commons snapshot instead of
+  visitor-time web lookups. See [poster sourcing and storage](posters.md) for
+  matching, provenance, bundled assets, private S3 storage, and fallback rules.
+  Hero film cards are not interactive.
+- Poster acquisition is expanding across the complete CMU catalog using
+  Wikimedia film identifiers and TMDB. Bulk downloads are an offline,
+  resumable storage job, separate from the website's bundled starter snapshot.
+  See [catalog-wide acquisition](posters.md#catalog-wide-acquisition) for
+  matching safeguards, checkpoint reconciliation, credential handling, and
+  the attribution required before displaying TMDB images.
+- New AWS resources and configuration defaults use `us-west-2` (Oregon).
+  Previously recorded `us-east-1` readiness observations remain historical;
+  this change does not migrate existing resources.
 - The public demo targets about 720 recommendation requests/month and a
   $10/month recurring budget, excluding up to $20/year upfront for a custom
   domain. The exact domain and registrar quote remain unselected.

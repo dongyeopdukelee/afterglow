@@ -4,13 +4,29 @@ This first website slice runs locally against the existing FastAPI catalog.
 It is not a public AWS deployment. An optional Bedrock parsing adapter is
 implemented, with live validation still pending; see
 [AWS readiness](aws-readiness.md).
-Semantic indexing/search, usage quotas and AWS infrastructure remain subsequent
-work; the UI labels plot/mood matching as unavailable until implemented.
+Semantic indexing/search, usage quotas and public hosting infrastructure remain
+subsequent work; the UI describes only the currently supported genre, year,
+and title filters.
+
+See the [product decisions](decisions.md#product-scope) for the visual direction.
+The first keyboard stop lets visitors skip to the films. The header keeps
+only the brand, and search instructions follow the supported
+[API filters](../README.md#api). Reduced-motion settings disable smooth
+scrolling and transitions.
 
 ## Run locally
 
 For dependencies, catalog setup and API/website startup commands, see
 [local development](../README.md#local-development).
+
+Typography is self-hosted: Satoshi for headings/wordmarks and DM Sans for
+body text and controls. Run `npm run fonts` in `frontend` before the first
+development session; `npm run build` also performs this setup. It downloads
+the unmodified Satoshi webfont directly from Fontshare and verifies its pinned
+checksum. That font binary is ignored by Git; its ITF license permits the
+project's self-hosted use and limits redistribution. DM Sans's Latin and
+extended Latin webfonts are included under the SIL Open Font License. Font
+sources and notices are in `frontend/public/fonts/README.md`.
 
 ### Interactive preview during development
 
@@ -51,9 +67,28 @@ AFTERGLOW_API_PROXY=http://127.0.0.1:8001 \
 remain same-origin. Restart Vite if changing this setting. Local searches
 still require Ollama with `qwen3.5:2b`; browsing and synopses do not.
 
-On the current WSL host, these services run in the `afterglow-dev` tmux window
-from `/tmp/afterglow-website`. A third pane runs the existing local Ollama
-installation and model cache, without paid API calls or model downloads.
+For an independent UI redesign preview from another checkout, run that
+checkout's API on 8002 and Vite on 5175. The original preview on 5174 keeps
+its API on 8001. On this host, the redesign API reads the same CMU snapshot
+without modifying it:
+
+```sh
+DATABASE_URL='sqlite:///file:/tmp/afterglow-website/.tools/preview/catalog.sqlite3?mode=ro&uri=true' \
+  uv run uvicorn movie_db_llm.main:app --host 127.0.0.1 --port 8002 --reload
+```
+
+```sh
+cd frontend
+AFTERGLOW_API_PROXY=http://127.0.0.1:8002 \
+  npm run dev -- --port 5175 --strictPort
+```
+
+This keeps the original website on 5174 available for comparison. Vite updates
+the redesign browser tab as frontend source changes; keep its process running.
+
+On the current WSL host, the original preview and API run in the `afterglow-dev`
+tmux window from `/tmp/afterglow-website`. A third pane runs the existing local
+Ollama installation and model cache, without paid API calls or model downloads.
 Closing the browser or detaching tmux does not
 stop them; stopping WSL or rebooting does. To view logs, select that window
 with `tmux select-window -t main:afterglow-dev`. To stop the preview, press
@@ -136,7 +171,7 @@ To select Bedrock explicitly on the WSL host:
 
 ```sh
 AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
-AWS_PROFILE=afterglow AWS_REGION=us-east-1 INTENT_PROVIDER=bedrock \
+AWS_PROFILE=afterglow AWS_REGION=us-west-2 INTENT_PROVIDER=bedrock \
   uv run uvicorn movie_db_llm.main:app --reload
 ```
 
@@ -155,5 +190,12 @@ uv run pytest tests/test_bedrock.py tests/test_recommendations.py
 uv run pyright scripts/check_bedrock.py
 ```
 
-The catalog attribution remains visible in the website. Covers are decorative
-CSS artwork, not downloaded movie posters or additional licensed media.
+The opening selection shuffles on a new visit; its seed stays fixed while
+paging. A `?seed=332` URL makes a visit reproducible. Verified poster matches
+appear first, then the complete remaining catalog. See the
+[API contract](../README.md#api) for ordering outside website browsing.
+
+The catalog attribution remains visible. [Poster sourcing and S3 storage](posters.md)
+describes the reviewed Commons snapshot, local copies, provenance records, and
+artwork fallback. The two hero films are non-clickable illustrations of the
+collection.
