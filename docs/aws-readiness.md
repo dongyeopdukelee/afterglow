@@ -3,11 +3,10 @@
 Checked on 2026-11-15 UTC in `us-east-1` and `us-west-2`. These are observations,
 not a claim that public deployment or live model-quality validation is complete.
 
-The default AWS region is now `us-west-2` for the application, the WSL
-`afterglow` / `afterglow-source` profiles, and new WSL zsh sessions. Explicit
-region overrides still work. This setting does not move existing resources,
-enable hosted inference by default, or resolve the historical runtime
-throttling below.
+The WSL `afterglow` / `afterglow-source` profiles and new WSL zsh sessions
+were configured for Oregon. See [inference configuration](../README.md#inference-configuration)
+for application defaults and overrides. This setting does not move existing
+resources or resolve the historical runtime throttling below.
 
 ## Working inference route: Bedrock Mantle
 
@@ -21,11 +20,8 @@ Standalone IAM-signed requests in Oregon succeeded through
 - `openai.gpt-5.6-luna`: rejected with account-specific access denial despite
   positive applied Mantle quotas. Listing a model or quota is not acceptance.
 
-The application adapter now targets GPT-OSS 20B through Mantle, not Nova
-through Converse. It signs each request with refreshed temporary IAM
-credentials and validates a single forced `movie_intent` tool call. It rejects
-truncated output, refusals, multiple calls, wrong function names and invalid
-arguments. No automatic retries, API keys, or cross-region profile are used.
+For the adapter's authentication, request bounds and output validation, see
+[hosted intent parsing](website.md#hosted-intent-parsing-not-yet-deployed).
 
 AWS documents the model-specific endpoint/ID in the
 [GPT-OSS model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-oss-20b.html)
@@ -35,10 +31,11 @@ The future runtime action is `bedrock-mantle:CreateInference`; the local
 administrator role is not the future Lambda execution role.
 
 These basic probes establish connectivity, not recommendation quality.
-The expanded ten-case evaluation measures intent accuracy, actual provider
-token counts and end-to-end parser latency; acceptance remains pending until
-that check succeeds. Titan embeddings remain separately unverified. No public
-paid-inference endpoint or hosting infrastructure has been provisioned.
+Full live intent acceptance remains pending: the saved browser-login session
+expired, and the owner is completing the approved WSL-only login. See the
+[bounded live check](#repeat-the-bounded-live-parsing-check) for evaluation
+coverage and measurements. Titan embeddings remain separately unverified.
+No public paid-inference endpoint or hosting infrastructure has been provisioned.
 
 ## Historical runtime recheck: Converse inference blocked
 
@@ -80,18 +77,18 @@ as retrieving the applied quota value. A catalog authorization result or an
 earlier bulk listing is not a successful inference test.
 
 No retry loops, quota increases, subscriptions, or hosting resources were
-created. No hosted model passed acceptance, and work requiring successful live
-inference or embeddings has not advanced. Nova Micro/Titan V2 remain candidates,
-not an accepted working hosted configuration. The local preview remains on
-Ollama and its user-visible API contract is unchanged.
+created during this recheck. For the subsequent Mantle results, see
+[Working inference route](#working-inference-route-bedrock-mantle); for the
+preview's provider and lifecycle, see
+[interactive preview](website.md#interactive-preview-during-development).
 
-## Existing-capacity assessment
+## Historical existing-capacity assessment
 
 An earlier read-only inventory on 2026-11-15 UTC compared `us-east-1` and
-`us-west-2`. The deployment role still assumes successfully. No quota increases,
+`us-west-2`. The deployment role assumed successfully. No quota increases,
 support cases, model subscriptions, or hosting resources were created.
 
-The relevant Nova/Titan limits in Virginia remain zero. Oregon reports these
+The relevant Nova/Titan limits in Virginia were zero. Oregon reported these
 values in its bulk listing. This historical snapshot is **not current usable
 capacity**; see the later individual applied-quota lookups above:
 
@@ -109,33 +106,19 @@ These are different quota scopes, not additive allowances. For text embeddings,
 plan request rate against the RPM quota rather than the listed TPM value.
 Batch job-size/record limits were excluded from interactive capacity decisions.
 
-Quota-based preference remains Nova Micro for parsing and Titan V2 for
-embeddings, using Oregon as a candidate source region. Both report model
-authorization, entitlement and agreement available there. This is **not a
-verified working configuration**:
-
-- The bounded parsing evaluation using Oregon's Nova Micro profile stopped on
-  its first query with `status: blocked` and exit code 1.
-- A separate 16-output-token Nova Converse probe returned
-  `ThrottlingException: Too many tokens per day`.
-- One short Titan V2 embedding request was throttled; it produced no valid
-  embedding result.
-- The same parsing evaluation against direct Ministral 3B also stopped on its
-  first query. A separate 16-output-token, no-tools Converse probe returned
-  `ThrottlingException: Too many tokens`.
+This inventory initially favored Nova Micro for parsing and Titan V2 for
+embeddings. The subsequent [runtime recheck](#historical-runtime-recheck-converse-inference-blocked)
+supersedes that assessment. A separate 16-output-token, no-tools Ministral 3B
+Converse probe also returned `ThrottlingException: Too many tokens`.
 
 Automatic retries were disabled for these probes. The tiny no-tools requests
 distinguish the runtime block from a large prompt or a forced-tool schema issue;
 they do not establish its underlying cause. No live model-quality pass, vector
-quality measurement or latency benchmark was obtained. The application still
-defaults to local Ollama; changing the default AWS region does not switch the
-preview to a hosted provider. Diagnose the mismatch
-between listed quotas and runtime rejection before accepting a hosted model;
-do not interpret nonzero listings as proof that the earlier access problem has
-cleared. Cohere Embed English was also inspected, but its agreement reported
+quality measurement or latency benchmark was obtained in this assessment.
+Cohere Embed English was also inspected, but its agreement reported
 `NOT_AVAILABLE`; it was not invoked or subscribed.
 
-### Cross-region routing is not an application requirement
+### Historical Converse routing options
 
 Afterglow's low expected traffic does not require a multi-region application.
 Bedrock cross-region inference lets AWS route an individual model call among
@@ -147,7 +130,8 @@ profile `us.amazon.nova-micro-v1:0`, routing within the US. Its Oregon source
 quota is separate from Virginia's quota. Titan V2 can be called directly in
 Oregon. A small direct parsing alternative is
 [Ministral 3B](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-mistral-ai-ministral-3b.html),
-but its live probe also failed. No routing approach is accepted as working yet.
+but its Converse probe also failed. These historical routing options do not
+describe the [Mantle route](#working-inference-route-bedrock-mantle).
 
 AWS documents no additional geographic
 [cross-region routing fee](https://docs.aws.amazon.com/bedrock/latest/userguide/cross-region-inference.html);
@@ -200,7 +184,7 @@ by the proposed approach.
   on its first query, returned structured `status: blocked` output and exit
   code 1, and did not produce a model-quality pass.
 
-## Verified candidate model prices
+## Historical Nova/Titan candidate model prices
 
 AWS Price List API, catalog version `20261111013037`, on-demand inference in
 US East (N. Virginia):
@@ -213,7 +197,8 @@ US East (N. Virginia):
 See [Bedrock pricing](https://aws.amazon.com/bedrock/pricing/). These are
 public rates, not a quote, account-specific discount, or an observed bill.
 
-A **scenario**, not measured usage: 720 monthly searches with 5,000 parsing
+A **historical Nova/Titan scenario**, not a Mantle estimate or measured usage:
+720 monthly searches with 5,000 parsing
 input tokens, 256 parsing output tokens, and 250 query-embedding tokens per
 search gives USD 0.1518048 parsing + USD 0.0036 query embeddings =
 USD 0.1554048/month. Calculated with Python `Decimal`; no free-tier credits
@@ -244,10 +229,10 @@ usage measurement until the corresponding live request has succeeded.
 ## Repeat the bounded live parsing check
 
 This explicitly opts into up to ten bounded paid model calls and exits nonzero
-on the first blocked or incorrect result. It checks decade bounds, the
+on the first blocked or incorrect result. It checks decade bounds,
 all five year comparisons, literal title punctuation, unsupported plot/OR
 requests, and an unconstrained greeting against fixed expected behavior.
-Each successful case records latency and provider-reported usage, including
+Each parsed result records latency and provider-reported usage, including
 reasoning tokens in completion usage. Missing usage is reported as null, not
 estimated. It is not an evaluation of semantic search.
 

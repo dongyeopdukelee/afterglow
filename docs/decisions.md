@@ -62,8 +62,9 @@ when a decision is made, changed, or removed.
 - Select hosted inference from existing account quotas; quota-increase requests
   are out of scope for the current deployment phase. A positive quota listing
   does not replace successful live invocation and quality checks.
-- Hosted intent extraction uses Bedrock Mantle Chat Completions with
-  `openai.gpt-oss-20b` in Oregon, signed using temporary IAM credentials.
+- Hosted intent extraction uses Bedrock Mantle Chat Completions, signed using
+  temporary IAM credentials. See [inference configuration](../README.md#inference-configuration)
+  for the current model and regional defaults.
   It requires validated tool output, shared application-owned year semantics,
   bounded input/output, and no silent fallback to another provider.
   Live model-quality validation remains required before public deployment.

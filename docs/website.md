@@ -48,14 +48,15 @@ AFTERGLOW_API_PROXY=http://127.0.0.1:8001 \
 ```
 
 `AFTERGLOW_API_PROXY` configures only Vite's development proxy; browser requests
-remain same-origin. Restart Vite if changing this setting. Local searches
-still require Ollama with `qwen3.5:2b`; browsing and synopses do not.
+remain same-origin. Restart Vite if changing this setting. Recommendation
+searches use the [configured inference provider](../README.md#inference-configuration);
+browsing and synopses do not require inference.
 
 On the current WSL host, these services run in the `afterglow-dev` tmux window
 from `/tmp/afterglow-bedrock`. This preview explicitly uses Bedrock, so
 recommendation searches make bounded paid calls and require a current AWS
-login; catalog browsing and synopses do not. The repository default remains
-Ollama. The preview does not start a separate local model server.
+login; catalog browsing and synopses do not. The preview does not start a
+separate local model server.
 Closing the browser or detaching tmux does not
 stop them; stopping WSL or rebooting does. To view logs, select that window
 with `tmux select-window -t main:afterglow-dev`. To stop the preview, press
@@ -144,14 +145,14 @@ AWS_PROFILE=afterglow AWS_REGION=us-west-2 INTENT_PROVIDER=bedrock \
 
 See [inference configuration](../README.md#inference-configuration) for provider
 settings and defaults, and the [API contract](../README.md#api) for failure
-responses. Hosted parsing uses one IAM-signed Mantle Chat Completions call,
-at most 1,024 completion tokens (including reasoning), a bounded input
-context, and no automatic paid retries. The default model is
-`openai.gpt-oss-20b`, using the regional `/v1` route rather than Converse.
+responses. Hosted parsing uses one IAM-signed Mantle Chat Completions call
+through the regional `/v1` route, at most 1,024 completion tokens (including
+reasoning), a bounded input context, and no automatic paid retries. It requires
+exactly one `movie_intent` function call and rejects truncated output, refusals,
+wrong function names and invalid arguments.
 Credentials refresh through the normal AWS credential chain; Lambda will use
 its execution role, not the local administrator profile. No API key is needed.
-Catalog browsing,
-movie details and health remain available when inference fails.
+Catalog browsing, movie details and health remain available when inference fails.
 
 This is adapter support, not proof of model quality or a public deployment.
 See [AWS readiness](aws-readiness.md) for live-check results and pending gates.
