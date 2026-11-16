@@ -136,7 +136,7 @@ The API never executes model-generated SQL.
 | `OLLAMA_MODEL` | `qwen3.5:2b` | Locally downloaded model tag |
 | `OLLAMA_TIMEOUT_SECONDS` | `120` | HTTP inference timeout in seconds |
 | `AWS_REGION` | `us-west-2` | Bedrock client region; explicitly set to override the Oregon default |
-| `BEDROCK_MODEL_ID` | `us.amazon.nova-micro-v1:0` | Bedrock model or inference profile supporting the required Converse tool contract |
+| `BEDROCK_MODEL_ID` | `openai.gpt-oss-20b` | Mantle model supporting the `/v1` Chat Completions forced-function contract; overrides require live validation |
 
 ## Tests and checks
 

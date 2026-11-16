@@ -6,9 +6,41 @@ not a claim that public deployment or live model-quality validation is complete.
 The default AWS region is now `us-west-2` for the application, the WSL
 `afterglow` / `afterglow-source` profiles, and new WSL zsh sessions. Explicit
 region overrides still work. This setting does not move existing resources,
-enable hosted inference by default, or resolve the runtime throttling below.
+enable hosted inference by default, or resolve the historical runtime
+throttling below.
 
-## Latest recheck: hosted inference is still blocked
+## Working inference route: Bedrock Mantle
+
+Standalone IAM-signed requests in Oregon succeeded through
+`https://bedrock-mantle.us-west-2.api.aws/v1/chat/completions`:
+
+- `openai.gpt-oss-20b`: HTTP 200, returned `OK.`; 71 prompt tokens and
+  31 completion tokens, 102 total.
+- `mistral.ministral-3-3b-instruct`: HTTP 200 with generated text; 18 total
+  tokens. It did not follow the tiny `Reply with OK.` prompt exactly.
+- `openai.gpt-5.6-luna`: rejected with account-specific access denial despite
+  positive applied Mantle quotas. Listing a model or quota is not acceptance.
+
+The application adapter now targets GPT-OSS 20B through Mantle, not Nova
+through Converse. It signs each request with refreshed temporary IAM
+credentials and validates a single forced `movie_intent` tool call. It rejects
+truncated output, refusals, multiple calls, wrong function names and invalid
+arguments. No automatic retries, API keys, or cross-region profile are used.
+
+AWS documents the model-specific endpoint/ID in the
+[GPT-OSS model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-oss-20b.html)
+and the separate APIs and quota systems in its
+[endpoint comparison](https://docs.aws.amazon.com/bedrock/latest/userguide/endpoints.html).
+The future runtime action is `bedrock-mantle:CreateInference`; the local
+administrator role is not the future Lambda execution role.
+
+These basic probes establish connectivity, not recommendation quality.
+The expanded ten-case evaluation measures intent accuracy, actual provider
+token counts and end-to-end parser latency; acceptance remains pending until
+that check succeeds. Titan embeddings remain separately unverified. No public
+paid-inference endpoint or hosting infrastructure has been provisioned.
+
+## Historical runtime recheck: Converse inference blocked
 
 At 09:31–09:36 UTC on 2026-11-15, the WSL `afterglow` role authenticated
 successfully and the configured/default client region was Oregon. Nova Micro
@@ -211,13 +243,20 @@ usage measurement until the corresponding live request has succeeded.
 
 ## Repeat the bounded live parsing check
 
-This explicitly opts into up to four small paid model calls and exits nonzero
+This explicitly opts into up to ten bounded paid model calls and exits nonzero
 on the first blocked or incorrect result. It checks decade bounds, the
-after/since distinction, and literal title punctuation against fixed expected
-intent. It is not an evaluation of the complete catalog or semantic search.
+all five year comparisons, literal title punctuation, unsupported plot/OR
+requests, and an unconstrained greeting against fixed expected behavior.
+Each successful case records latency and provider-reported usage, including
+reasoning tokens in completion usage. Missing usage is reported as null, not
+estimated. It is not an evaluation of semantic search.
 
 ```sh
 AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
 AWS_PROFILE=afterglow AWS_REGION=us-west-2 \
   uv run python scripts/check_bedrock.py --live
 ```
+
+Add `--catalog` to use every distinct genre in the configured migrated/imported
+catalog rather than the four-genre test vocabulary. This reads the database
+without modifying it; select it with `DATABASE_URL` as usual.

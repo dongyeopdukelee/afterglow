@@ -2,7 +2,7 @@
 
 This first website slice runs locally against the existing FastAPI catalog.
 It is not a public AWS deployment. An optional Bedrock parsing adapter is
-implemented, with live validation still pending; see
+implemented using Mantle; full live validation is tracked in
 [AWS readiness](aws-readiness.md).
 Semantic indexing/search, usage quotas and AWS infrastructure remain subsequent
 work; the UI labels plot/mood matching as unavailable until implemented.
@@ -52,8 +52,10 @@ remain same-origin. Restart Vite if changing this setting. Local searches
 still require Ollama with `qwen3.5:2b`; browsing and synopses do not.
 
 On the current WSL host, these services run in the `afterglow-dev` tmux window
-from `/tmp/afterglow-website`. A third pane runs the existing local Ollama
-installation and model cache, without paid API calls or model downloads.
+from `/tmp/afterglow-bedrock`. This preview explicitly uses Bedrock, so
+recommendation searches make bounded paid calls and require a current AWS
+login; catalog browsing and synopses do not. The repository default remains
+Ollama. The preview does not start a separate local model server.
 Closing the browser or detaching tmux does not
 stop them; stopping WSL or rebooting does. To view logs, select that window
 with `tmux select-window -t main:afterglow-dev`. To stop the preview, press
@@ -142,8 +144,13 @@ AWS_PROFILE=afterglow AWS_REGION=us-west-2 INTENT_PROVIDER=bedrock \
 
 See [inference configuration](../README.md#inference-configuration) for provider
 settings and defaults, and the [API contract](../README.md#api) for failure
-responses. Hosted parsing uses one bounded Converse call, at most 512 output
-tokens, a bounded input context, and no automatic paid retries. Catalog browsing,
+responses. Hosted parsing uses one IAM-signed Mantle Chat Completions call,
+at most 1,024 completion tokens (including reasoning), a bounded input
+context, and no automatic paid retries. The default model is
+`openai.gpt-oss-20b`, using the regional `/v1` route rather than Converse.
+Credentials refresh through the normal AWS credential chain; Lambda will use
+its execution role, not the local administrator profile. No API key is needed.
+Catalog browsing,
 movie details and health remain available when inference fails.
 
 This is adapter support, not proof of model quality or a public deployment.
@@ -154,6 +161,11 @@ Deterministic regression checks run without AWS credentials or paid calls:
 uv run pytest tests/test_bedrock.py tests/test_recommendations.py
 uv run pyright scripts/check_bedrock.py
 ```
+
+For opt-in paid evaluation, see the
+[bounded live check](aws-readiness.md#repeat-the-bounded-live-parsing-check).
+CI never runs that evaluation or needs AWS credentials. Models listed by AWS
+are not necessarily callable by the account; test the exact endpoint and model.
 
 The catalog attribution remains visible in the website. Covers are decorative
 CSS artwork, not downloaded movie posters or additional licensed media.

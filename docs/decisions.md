@@ -62,10 +62,11 @@ when a decision is made, changed, or removed.
 - Select hosted inference from existing account quotas; quota-increase requests
   are out of scope for the current deployment phase. A positive quota listing
   does not replace successful live invocation and quality checks.
-- Hosted intent extraction uses the Bedrock Converse API with validated tool
-  output, shared application-owned year semantics, bounded input/output, and
-  no silent fallback to another provider. Nova Micro is the current candidate;
-  live model-quality validation remains required before public deployment.
+- Hosted intent extraction uses Bedrock Mantle Chat Completions with
+  `openai.gpt-oss-20b` in Oregon, signed using temporary IAM credentials.
+  It requires validated tool output, shared application-owned year semantics,
+  bounded input/output, and no silent fallback to another provider.
+  Live model-quality validation remains required before public deployment.
 - The website will remain online when a conservative usage quota pauses
   recommendation searches. Budget alerts alone are not a spending cap.
 - Deployment will use the owner's existing AWS account without assuming signup

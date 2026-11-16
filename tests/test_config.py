@@ -43,8 +43,8 @@ def test_aws_region_selects_client_endpoint(
             "import json; "
             "from movie_db_llm.bedrock import bedrock_client; "
             "client = bedrock_client(); "
-            "print(json.dumps({'region': client.meta.region_name, "
-            "'endpoint': client.meta.endpoint_url})); client.close()",
+            "print(json.dumps({'endpoint': str(client.base_url)})); "
+            "client.close()",
         ],
         env=environment,
         check=True,
@@ -53,6 +53,5 @@ def test_aws_region_selects_client_endpoint(
     )
 
     assert json.loads(result.stdout) == {
-        "region": expected_region,
-        "endpoint": f"https://bedrock-runtime.{expected_region}.amazonaws.com",
+        "endpoint": f"https://bedrock-mantle.{expected_region}.api.aws/v1/",
     }

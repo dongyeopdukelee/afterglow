@@ -58,8 +58,9 @@ Build on the completed structured-retrieval step above.
 - [x] Add the first local React/TypeScript website with browsing, structured
   recommendation input and full movie synopses, plus mobile/desktop tests.
 - [x] Verify the `afterglow` deployment role and configure a WSL-only profile.
-- [x] Add an optional Bedrock intent adapter with deterministic API/catalog
-  tests; Ollama remains the default. Live hosted validation is still pending.
+- [x] Add an optional IAM-signed Bedrock Mantle intent adapter with
+  deterministic API/catalog tests; Ollama remains the default. GPT-OSS 20B
+  basic inference works in Oregon; full live intent validation is pending.
 - Evaluate on-demand Bedrock parsing and embedding models with measured cost.
 - Account-specific readiness and the current live-inference blocker are
   recorded in [AWS readiness](aws-readiness.md).

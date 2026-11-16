@@ -2,14 +2,29 @@
 
 import argparse
 import json
+from time import perf_counter
 
+import httpx
 from botocore.exceptions import BotoCoreError, ClientError
+from pydantic import BaseModel, Field, ValidationError
+from sqlalchemy import select
 
 from movie_db_llm.bedrock import BedrockIntentParser, bedrock_client
+from movie_db_llm.config import AWS_REGION, BEDROCK_MODEL_ID
+from movie_db_llm.database import SessionLocal
+from movie_db_llm.models import MovieGenre
 from movie_db_llm.recommendations import (
     InvalidModelResponseError,
     ModelUnavailableError,
 )
+
+
+class Usage(BaseModel):
+    """Measured provider counts, including any billed reasoning output."""
+
+    prompt_tokens: int = Field(ge=0, strict=True)
+    completion_tokens: int = Field(ge=0, strict=True)
+    total_tokens: int = Field(ge=0, strict=True)
 
 
 def main() -> int:
@@ -18,11 +33,17 @@ def main() -> int:
         "--live",
         action="store_true",
         required=True,
-        help="Authorize up to four small, paid Bedrock parsing requests.",
+        help="Authorize up to ten bounded, paid Bedrock parsing requests.",
     )
-    parser.parse_args()
+    parser.add_argument(
+        "--catalog",
+        action="store_true",
+        help="Use all genres in the configured catalog (read-only).",
+    )
+    arguments = parser.parse_args()
     try:
-        model = BedrockIntentParser(bedrock_client())
+        client = bedrock_client()
+        model = BedrockIntentParser(client)
     except BotoCoreError, ClientError:
         print(
             json.dumps(
@@ -33,7 +54,22 @@ def main() -> int:
             )
         )
         return 1
-    cases: list[tuple[str, dict[str, object]]] = [
+    genres = ["Comedy", "Drama", "Horror", "Thriller"]
+    if arguments.catalog:
+        with SessionLocal() as session:
+            genres = list(
+                session.scalars(
+                    select(MovieGenre.genre)
+                    .distinct()
+                    .order_by(MovieGenre.genre)
+                )
+            )
+        if not genres:
+            print(
+                json.dumps({"status": "blocked", "message": "Empty catalog."})
+            )
+            return 1
+    cases: list[tuple[str, dict[str, object] | None]] = [
         (
             "Comedies from the 1990s",
             {
@@ -83,35 +119,106 @@ def main() -> int:
             },
         ),
     ]
-    for query, expected in cases:
+    for word, year_min, year_max, lower_inclusive, upper_inclusive in [
+        ("before", None, 2000, True, False),
+        ("until", None, 2000, True, True),
+        ("in", 2000, 2000, True, True),
+    ]:
+        cases.append(
+            (
+                f"Thriller movies {word} 2000",
+                {
+                    "genres": ["Thriller"],
+                    "year_min": year_min,
+                    "year_max": year_max,
+                    "year_min_inclusive": lower_inclusive,
+                    "year_max_inclusive": upper_inclusive,
+                    "title_keywords": [],
+                    "unsupported_constraints": [],
+                },
+            )
+        )
+    cases.extend(
+        [
+            ("90s comedy movies about dogs", None),
+            ("Horror or Comedy movies", None),
+            (
+                "hello",
+                {
+                    "genres": [],
+                    "year_min": None,
+                    "year_max": None,
+                    "year_min_inclusive": True,
+                    "year_max_inclusive": True,
+                    "title_keywords": [],
+                    "unsupported_constraints": [],
+                },
+            ),
+        ]
+    )
+    usage: list[Usage | None] = []
+
+    def observe(response: httpx.Response) -> None:
+        response.read()
         try:
-            actual = model.parse(
-                query, ["Comedy", "Drama", "Horror", "Thriller"]
-            ).model_dump()
-        except (ModelUnavailableError, InvalidModelResponseError) as error:
+            usage.append(
+                Usage.model_validate_json(
+                    json.dumps(response.json().get("usage"))
+                )
+            )
+        except ValueError, ValidationError, AttributeError:
+            usage.append(None)
+
+    client.event_hooks["response"].append(observe)
+    try:
+        for query, expected in cases:
+            usage.clear()
+            started = perf_counter()
+            try:
+                actual = model.parse(query, genres).model_dump()
+            except (ModelUnavailableError, InvalidModelResponseError) as error:
+                print(
+                    json.dumps(
+                        {
+                            "query": query,
+                            "status": "blocked",
+                            "message": str(error),
+                        }
+                    )
+                )
+                return 1
+            passed = (
+                actual == expected
+                if expected is not None
+                else bool(actual["unsupported_constraints"])
+            )
+            measured_usage = usage[-1] if usage else None
             print(
                 json.dumps(
                     {
                         "query": query,
-                        "status": "blocked",
-                        "message": str(error),
+                        "status": "pass" if passed else "fail",
+                        "actual": actual,
+                        "expected": expected
+                        if expected is not None
+                        else {"unsupported_constraints": "must be nonempty"},
+                        "model": BEDROCK_MODEL_ID,
+                        "region": AWS_REGION,
+                        "catalog_genres": len(genres),
+                        "latency_ms": round((perf_counter() - started) * 1000),
+                        "usage": (
+                            measured_usage.model_dump()
+                            if measured_usage
+                            else None
+                        ),
                     }
-                )
+                ),
+                flush=True,
             )
-            return 1
-        passed = actual == expected
-        print(
-            json.dumps(
-                {
-                    "query": query,
-                    "status": "pass" if passed else "fail",
-                    "actual": actual,
-                    "expected": expected,
-                }
-            )
-        )
-        if not passed:
-            return 1
+            if not passed:
+                return 1
+    finally:
+        client.event_hooks["response"].remove(observe)
     return 0
 
 
