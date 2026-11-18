@@ -60,12 +60,9 @@ Build on the completed structured-retrieval step above.
 - [x] Verify the `afterglow` deployment role and configure a WSL-only profile.
 - [x] Add an optional hosted intent adapter with deterministic API/catalog
   tests; see [provider configuration](../README.md#inference-configuration).
-- [x] Pass the ten-case live structured-intent check using all 363 imported
-  genre labels, preserving exact year and title semantics. Measurements and
-  remaining release gates are in [AWS readiness](aws-readiness.md).
-- Evaluate on-demand Bedrock parsing and embedding models with measured cost.
-- Account-specific readiness and live-inference observations are
-  recorded in [AWS readiness](aws-readiness.md).
+- [x] Verify hosted structured intent against the imported catalog. See the
+  [live results](aws-readiness.md#latest-live-validation-structured-intent-passes).
+- Evaluate embedding quality and verify parsing and embedding costs.
 - Implement serverless hosting, semantic retrieval and fail-closed quotas.
 - Deploy and verify the complete public request path before announcing it.
 - Select a custom domain following the

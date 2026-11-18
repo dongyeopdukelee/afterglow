@@ -1,8 +1,8 @@
 # AWS readiness
 
-Latest live check: 2026-11-18 UTC in `us-west-2`, with historical observations
-from 2026-11-15 in `us-east-1` and `us-west-2`. These are observations,
-not a claim that public deployment or live model-quality validation is complete.
+The 2026-11-18 UTC checks exercised structured parsing with Bedrock in
+`us-west-2` and the locally served website and API. Earlier observations
+cover `us-east-1` and `us-west-2` on 2026-11-15.
 
 The WSL `afterglow` / `afterglow-source` profiles and new WSL zsh sessions
 were configured for Oregon. See [inference configuration](../README.md#inference-configuration)
@@ -18,26 +18,17 @@ no Windows files, IAM policies or account settings were changed. Use the
 [explicit project login command](website.md#deployment-administrator-profile)
 to avoid refreshing a different profile/cache next time.
 
-The default hosted model passed all ten original live acceptance cases
-with the real catalog's 363 distinct genre labels. The tested model was
-`mistral.ministral-3-8b-instruct`; current defaults are in
-[inference configuration](../README.md#inference-configuration). The check
-covers decades, all five year comparisons, exact title punctuation,
-unsupported plot/OR constraints and an unconstrained greeting.
-
-The adapter previously mixed a forced function request with plain-JSON
-assistant demonstrations. Live replies exposed text-only answers and invalid
-field types, which strict validation correctly rejected. Hosted examples now
-demonstrate function calls and tool acknowledgements, with explicit numeric
-year and no-constraint instructions. Ollama retains its original JSON protocol.
-GPT-OSS and Ministral 3B were not accepted after live format/semantic failures.
-No expected results were relaxed and no provider fallback was introduced.
+`mistral.ministral-3-8b-instruct` passed all ten live acceptance cases with
+the imported catalog's 363 distinct genre labels. Earlier GPT-OSS and
+Ministral 3B runs failed the format or intent checks. With the original
+plain-JSON examples, the strict parser rejected text-only replies and quoted
+years. See the [hosted prompt protocol](website.md#hosted-intent-parsing-not-yet-deployed).
 
 One passing ten-request batch reported 34,127 input tokens and 489 completion
 tokens. Parser-call latency was 287–1,250 ms, median 390 ms, including
 credential resolution and the network. This is a small development sample,
 not an SLA, a general accuracy guarantee, or total session spend. Other
-diagnostic calls are not included in those counts. CI makes no paid calls.
+diagnostic calls are not included in those counts.
 
 Real HTTP requests through Vite, Uvicorn, Bedrock and the imported SQLite
 catalog also passed: 1990s comedies, post-2000 thrillers and literal `dog`
@@ -46,13 +37,13 @@ the detail endpoint. Plot, OR and greeting requests returned 422 without
 movie cards. These are API/proxy smoke checks, not a public deployment or a
 complete browser/model evaluation.
 
-Semantic retrieval, embeddings, spending allowances and public hosting are
-still separate release gates; this result does not establish them as ready.
+See the [public release gates](#gates-before-continuing-to-public-release)
+for the outstanding work.
 
 ## Working inference route: Bedrock Mantle
 
-Standalone IAM-signed requests in Oregon succeeded through
-`https://bedrock-mantle.us-west-2.api.aws/v1/chat/completions`:
+Earlier connectivity probes sent standalone IAM-signed requests to
+`https://bedrock-mantle.us-west-2.api.aws/v1/chat/completions` in Oregon.
 
 - `openai.gpt-oss-20b`: HTTP 200, returned `OK.`; 71 prompt tokens and
   31 completion tokens, 102 total.
@@ -61,9 +52,6 @@ Standalone IAM-signed requests in Oregon succeeded through
 - `openai.gpt-5.6-luna`: rejected with account-specific access denial despite
   positive applied Mantle quotas. Listing a model or quota is not acceptance.
 
-For the adapter's authentication, request bounds and output validation, see
-[hosted intent parsing](website.md#hosted-intent-parsing-not-yet-deployed).
-
 AWS documents the model-specific endpoint/ID in the
 [GPT-OSS model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-oss-20b.html)
 and the separate APIs and quota systems in its
@@ -71,12 +59,8 @@ and the separate APIs and quota systems in its
 The future runtime action is `bedrock-mantle:CreateInference`; the local
 administrator role is not the future Lambda execution role.
 
-These earlier basic probes established connectivity, not recommendation
-quality. At that point live acceptance was pending an expired browser login;
-the later result is recorded above. See the
-[bounded live check](#repeat-the-bounded-live-parsing-check) for evaluation
-coverage and measurements. Titan embeddings remain separately unverified.
-No public paid-inference endpoint or hosting infrastructure has been provisioned.
+The subsequent [structured-intent evaluation](#latest-live-validation-structured-intent-passes)
+exercised the application parser with the full catalog vocabulary.
 
 ## Historical runtime recheck: Converse inference blocked
 
@@ -252,16 +236,16 @@ this scenario is not a spending cap; server-enforced quotas remain required.
 
 ## Gates before continuing to public release
 
-1. Select a model/source region with existing capacity and repeat bounded
-   parsing and embedding probes. Diagnose any account/runtime rejection even
-   when listed quotas are positive. No quota-increase requests are part of
-   the current phase; successful invocation and quality checks remain required
-   before public deployment.
-2. Evaluate representative user requests, including exact year boundaries,
-   unsupported constraints, and semantic synopsis examples against known films.
-3. Validate vector-store filtering, prices, and initial ingestion cost; finish
-   the hosting estimate before provisioning billable resources.
-4. Implement and verify fail-closed allowances before enabling paid searches.
+1. Verify a bounded embedding request using existing account capacity. Check
+   the applied quota for the model and source region and investigate any
+   runtime rejection.
+2. Evaluate semantic synopsis requests against known films, including
+   requests that also specify a genre, year or title filter.
+3. Validate vector-store filtering. Before provisioning, estimate parsing,
+   embedding, initial ingestion and hosting costs against the
+   [demo budget](decisions.md#product-scope).
+4. Implement and verify fail-closed allowances before exposing paid searches
+   to public visitors.
 5. Verify the public browser-to-catalog path, then select the custom domain.
 
 Do not publish a recommendation-quality pass, latency measurement, or token
@@ -269,20 +253,22 @@ usage measurement until the corresponding live request has succeeded.
 
 ## Repeat the bounded live parsing check
 
-This explicitly opts into up to ten bounded paid model calls and exits nonzero
-on the first blocked or incorrect result. It checks decade bounds,
-all five year comparisons, literal title punctuation, unsupported plot/OR
-requests, and an unconstrained greeting against fixed expected behavior.
+Run this paid development check manually outside CI. The required `--live`
+flag authorizes up to ten model calls. The script exits nonzero on the first
+blocked or incorrect result. It checks decade bounds, all five year comparisons,
+literal title punctuation, unsupported plot/OR requests and an unconstrained
+greeting against fixed expected behavior.
 Each parsed result records latency and provider-reported usage, including
 reasoning tokens in completion usage. Missing usage is reported as null, not
 estimated. It is not an evaluation of semantic search.
 
+To repeat the catalog-backed run, set `DATABASE_URL` to the migrated,
+imported database. The script reads its distinct genre labels.
+
 ```sh
 AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
 AWS_PROFILE=afterglow AWS_REGION=us-west-2 \
-  uv run python scripts/check_bedrock.py --live
+  uv run python scripts/check_bedrock.py --live --catalog
 ```
 
-Add `--catalog` to use every distinct genre in the configured migrated/imported
-catalog rather than the four-genre test vocabulary. This reads the database
-without modifying it; select it with `DATABASE_URL` as usual.
+Omit `--catalog` to run the same cases with the fixed four-genre vocabulary.

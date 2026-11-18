@@ -125,7 +125,8 @@ No matching movies returns an empty `items` list without relaxing filters.
 This step supports genres, release years, and title keywords. Requests for
 plot subjects (such as dogs), mood, actors, exclusions, or OR conditions
 return HTTP 422 rather than silently dropping those constraints. Empty or
-oversized request text also returns 422. Model parsing is probabilistic:
+oversized request text also returns 422, as do requests with no movie filters,
+such as greetings. Model parsing is probabilistic:
 schema validation prevents invalid queries but cannot guarantee that every
 request is interpreted correctly. Semantic synopsis search comes next.
 
