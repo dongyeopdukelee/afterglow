@@ -11,16 +11,20 @@ from urllib.parse import quote, urlencode
 import httpx
 from botocore.exceptions import BotoCoreError, ClientError
 from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import Connection, create_engine, make_url, select
+from sqlalchemy import Connection, create_engine, make_url
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import NullPool
 
-from movie_db_llm.bedrock import BedrockIntentParser, bedrock_client
+from movie_db_llm.bedrock import (
+    BedrockIntentParser,
+    bedrock_client,
+    inference_configuration,
+)
 from movie_db_llm.config import AWS_REGION, BEDROCK_MODEL_ID, DATABASE_URL
-from movie_db_llm.models import MovieGenre
 from movie_db_llm.recommendations import (
     InvalidModelResponseError,
     ModelUnavailableError,
+    catalog_genres_query,
 )
 
 
@@ -90,13 +94,7 @@ def main() -> int:
     if arguments.catalog:
         try:
             with open_catalog(DATABASE_URL) as connection:
-                genres = list(
-                    connection.scalars(
-                        select(MovieGenre.genre)
-                        .distinct()
-                        .order_by(MovieGenre.genre)
-                    )
-                )
+                genres = list(connection.scalars(catalog_genres_query()))
         except SQLAlchemyError, ValueError:
             print(
                 json.dumps(
@@ -265,6 +263,9 @@ def main() -> int:
                         "model": BEDROCK_MODEL_ID,
                         "region": AWS_REGION,
                         "catalog_genres": len(genres),
+                        "inference": inference_configuration(
+                            genres, model=BEDROCK_MODEL_ID
+                        ),
                         "latency_ms": round((perf_counter() - started) * 1000),
                         "usage": (
                             measured_usage.model_dump()

@@ -11,6 +11,36 @@ resources or resolve the historical runtime throttling below.
 
 ## Latest live validation: structured intent passes
 
+### Shared local-development configuration
+
+Normal development now defaults to the same Bedrock adapter and application
+configuration intended for deployment. `scripts/dev-api.sh` supplies only
+WSL authentication and server startup; model settings remain in the shared
+application configuration. Ollama is an explicit offline alternative.
+
+The 2026-11-18 development-parity recheck passed all ten live cases with 363
+catalog genre labels. The batch reported 34,127 input tokens and 484 completion
+tokens; parser latency was 239–1,667 ms, median 385.5 ms. All cases reported
+the same request fingerprint:
+`22ac008957900599c13afa15375186ff68050e71af5824d6c539ff1192380874`.
+These are measured results for this batch, not an accuracy or latency guarantee.
+
+A separate real-HTTP check through the new WSL launcher, Uvicorn, Bedrock and
+the read-only imported catalog returned ten correct cards for 1990s comedies,
+post-2000 thrillers, and literal `dog` title searches. A detail request loaded
+the synopsis. Plot, OR, and greeting requests returned 422 without cards.
+The temporary smoke API was stopped afterward.
+
+`scripts/dev-api.sh --print-config` reports the same safe inference identity
+used by the live evaluator. It binds the model, endpoint, generation settings,
+prompt/examples, schema, and genre vocabulary to the actual outgoing request
+format. It contains no user query or credentials. It does not hash the full
+catalog: compare catalog results using the same source snapshot as well.
+No public application has been deployed, so hosted behavior still needs
+post-deployment verification with the same cases and configuration.
+
+### Earlier validation of the selected model
+
 The owner's refreshed default login was valid for the expected account, but
 the project's separate WSL login cache had expired. Reusing that matching
 session in the private WSL cache restored the existing `afterglow` role;
@@ -260,7 +290,8 @@ flag authorizes up to ten model calls. The script exits nonzero on the first
 blocked or incorrect result. It checks decade bounds, all five year comparisons,
 literal title punctuation, unsupported plot/OR requests and an unconstrained
 greeting against fixed expected behavior.
-Each parsed result records latency and provider-reported usage, including
+Each parsed result records the shared inference configuration fingerprint,
+latency and provider-reported usage, including
 reasoning tokens in completion usage. Missing usage is reported as null, not
 estimated. It is not an evaluation of semantic search.
 
@@ -269,19 +300,12 @@ imported database. The command reads its distinct genre labels and uses the
 [private WSL profile](website.md#deployment-administrator-profile).
 
 ```sh
-env -u AWS_DEFAULT_PROFILE -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY \
-  -u AWS_SESSION_TOKEN -u AWS_SECURITY_TOKEN -u AWS_WEB_IDENTITY_TOKEN_FILE \
-  -u AWS_ROLE_ARN -u AWS_ROLE_SESSION_NAME \
-  -u AWS_CONTAINER_CREDENTIALS_RELATIVE_URI -u AWS_CONTAINER_CREDENTIALS_FULL_URI \
-  -u AWS_CONTAINER_AUTHORIZATION_TOKEN -u AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE \
-  AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
-  AWS_SHARED_CREDENTIALS_FILE=/home/dukelee/.config/afterglow/aws/credentials \
-  AWS_LOGIN_CACHE_DIRECTORY=/home/dukelee/.config/afterglow/aws/login-cache \
-  AWS_PROFILE=afterglow AWS_REGION=us-west-2 \
-  uv run python scripts/check_bedrock.py --live --catalog
+scripts/dev-api.sh --check
 ```
 
-Omit `--catalog` to run the same cases with the fixed four-genre vocabulary.
+For a development-only diagnostic with the fixed four-genre vocabulary, use
+`uv run python scripts/check_bedrock.py --live` inside a shell already configured
+with the private WSL profile. That diagnostic does not establish catalog parity.
 With `--catalog`, the evaluator opens SQLite read-only. It reports a blocked
 result before AWS client setup if the file or schema is missing, or if the
 catalog lacks any of the three genres the cases require (`Comedy`, `Horror`,

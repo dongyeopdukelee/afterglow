@@ -6,6 +6,7 @@ import subprocess
 import sys
 from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager
+from hashlib import sha256
 from pathlib import Path
 from typing import cast
 from unittest.mock import Mock
@@ -27,7 +28,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from movie_db_llm import bedrock, config, ollama
-from movie_db_llm.bedrock import BedrockAuth, BedrockIntentParser
+from movie_db_llm.bedrock import (
+    BedrockAuth,
+    BedrockIntentParser,
+    inference_configuration,
+)
 from movie_db_llm.database import configure_sqlite_connection, get_session
 from movie_db_llm.intent_contract import intent_messages
 from movie_db_llm.main import app
@@ -991,3 +996,49 @@ def test_live_check_requires_explicit_opt_in(arguments: list[str]) -> None:
     )
     assert result.returncode == 2
     assert "--live" in result.stderr
+
+
+@pytest.mark.parametrize("model", ["first-model", "second-model"])
+@pytest.mark.parametrize("max_tokens", [512, 1024])
+def test_configuration_fingerprint_describes_the_actual_request(
+    aws_client: httpx.Client,
+    replies: Replies,
+    requests: list[httpx.Request],
+    monkeypatch: pytest.MonkeyPatch,
+    model: str,
+    max_tokens: int,
+) -> None:
+    """The public digest binds evaluation identity to the HTTP wire contract.
+
+    The independent oracle is the captured outgoing request with only its last
+    user query replaced. A report that hashes stale settings would fail.
+    """
+    monkeypatch.setattr(bedrock, "MAX_OUTPUT_TOKENS", max_tokens)
+    genres = ["Comedy", "Drama"]
+    replies.append(reply(intent_payload()))
+    BedrockIntentParser(aws_client, model).parse("private search text", genres)
+    actual_request = requests[0]
+    body = json.loads(actual_request.content)
+    body["messages"][-1]["content"] = "<user query>"
+    endpoint = str(actual_request.url).removesuffix("chat/completions")
+    expected = sha256(
+        json.dumps(
+            {"endpoint": endpoint, "request": body}, sort_keys=True
+        ).encode()
+    ).hexdigest()
+    configuration = inference_configuration(genres, model=model)
+    assert configuration == {
+        "provider": "bedrock",
+        "model": model,
+        "region": "us-west-2",
+        "endpoint": endpoint,
+        "max_completion_tokens": max_tokens,
+        "temperature": 0,
+        "catalog_genres": 2,
+        "fingerprint": expected,
+    }
+    assert "private search text" not in json.dumps(configuration)
+    assert (
+        configuration["fingerprint"]
+        != inference_configuration(["Comedy"], model=model)["fingerprint"]
+    )

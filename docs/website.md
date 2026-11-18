@@ -195,18 +195,20 @@ prepared preview catalog. Refresh an expired session with the
 [project login](#deployment-administrator-profile).
 
 ```sh
-env -u AWS_DEFAULT_PROFILE -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY \
-  -u AWS_SESSION_TOKEN -u AWS_SECURITY_TOKEN -u AWS_WEB_IDENTITY_TOKEN_FILE \
-  -u AWS_ROLE_ARN -u AWS_ROLE_SESSION_NAME \
-  -u AWS_CONTAINER_CREDENTIALS_RELATIVE_URI -u AWS_CONTAINER_CREDENTIALS_FULL_URI \
-  -u AWS_CONTAINER_AUTHORIZATION_TOKEN -u AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE \
-  AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
-  AWS_SHARED_CREDENTIALS_FILE=/home/dukelee/.config/afterglow/aws/credentials \
-  AWS_LOGIN_CACHE_DIRECTORY=/home/dukelee/.config/afterglow/aws/login-cache \
-  AWS_PROFILE=afterglow AWS_REGION=us-west-2 INTENT_PROVIDER=bedrock \
-  DATABASE_URL="sqlite:///$PWD/.tools/preview/catalog.sqlite3" \
-  uv run uvicorn movie_db_llm.main:app --host 127.0.0.1 --port 8001 --reload
+DATABASE_URL="sqlite:///$PWD/.tools/preview/catalog.sqlite3" \
+  scripts/dev-api.sh --port 8001
 ```
+
+The launcher selects the existing WSL-only profile and clears inherited
+credential overrides. It does not set separate development model defaults:
+the application configuration is shared with the future hosted deployment.
+`AFTERGLOW_AWS_DIRECTORY` and `AFTERGLOW_AWS_PROFILE` can explicitly select
+another WSL auth directory/profile; they do not change the model settings.
+Use `scripts/dev-api.sh --print-config` with the same `DATABASE_URL` to inspect
+the request fingerprint. Use `scripts/dev-api.sh --check` for the bounded live
+Bedrock evaluation. Changing `INTENT_PROVIDER=ollama` is an intentional offline
+route and does not establish Bedrock acceptance.
+
 
 See [inference configuration](../README.md#inference-configuration) for provider
 settings and defaults, and the [API contract](../README.md#api) for failure

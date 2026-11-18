@@ -24,7 +24,8 @@ def test_aws_region_selects_client_endpoint(
     environment = {
         name: value
         for name, value in os.environ.items()
-        if not name.startswith("AWS_") and name != "BEDROCK_MODEL_ID"
+        if not name.startswith("AWS_")
+        and name not in ("BEDROCK_MODEL_ID", "INTENT_PROVIDER")
     }
     environment.update(
         {
@@ -50,10 +51,11 @@ def test_aws_region_selects_client_endpoint(
             "-c",
             "import json; "
             "from movie_db_llm.bedrock import bedrock_client; "
-            "from movie_db_llm.config import BEDROCK_MODEL_ID; "
+            "from movie_db_llm.config import BEDROCK_MODEL_ID, "
+            "INTENT_PROVIDER; "
             "client = bedrock_client(); "
             "print(json.dumps({'endpoint': str(client.base_url), "
-            "'model': BEDROCK_MODEL_ID})); "
+            "'model': BEDROCK_MODEL_ID, 'provider': INTENT_PROVIDER})); "
             "client.close()",
         ],
         env=environment,
@@ -65,4 +67,5 @@ def test_aws_region_selects_client_endpoint(
     assert json.loads(result.stdout) == {
         "endpoint": f"https://bedrock-mantle.{expected_region}.api.aws/v1/",
         "model": model or "mistral.ministral-3-8b-instruct",
+        "provider": "bedrock",
     }

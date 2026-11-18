@@ -27,7 +27,8 @@ with dogs in it" becoming grounded movie recommendations.
 
 ## 4. Structured retrieval — Complete
 
-- [x] Parse natural-language movie requests locally with Qwen3.5 2B via Ollama.
+- [x] Parse natural-language movie requests with the shared Bedrock route in
+  normal local development; Ollama remains an explicit offline option.
 - [x] Validate constrained genre, release-year, and title-keyword intent.
 - [x] Build catalog queries in the application and return up to 10 movie cards
   from `POST /recommendations`.

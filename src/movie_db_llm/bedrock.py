@@ -3,6 +3,7 @@
 import json
 from collections.abc import Generator
 from functools import lru_cache
+from hashlib import sha256
 from typing import Annotated, Literal
 
 import boto3
@@ -29,6 +30,62 @@ from movie_db_llm.recommendations import (
 MAX_INPUT_BYTES = 60_000
 MAX_OUTPUT_TOKENS = 1024
 _UNAVAILABLE_MESSAGE = "Hosted search is temporarily unavailable."
+
+
+def request_payload(
+    query: str, genres: list[str], model: str
+) -> dict[str, object]:
+    """Build the shared development, evaluation, and hosted request contract."""
+    return {
+        "model": model,
+        "messages": intent_messages(query, genres, tool_call=True),
+        "max_completion_tokens": MAX_OUTPUT_TOKENS,
+        "temperature": 0,
+        "parallel_tool_calls": False,
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": "movie_intent",
+                    "description": "Extract movie search intent.",
+                    "parameters": ModelIntent.model_json_schema(),
+                    "strict": True,
+                },
+            }
+        ],
+        "tool_choice": {
+            "type": "function",
+            "function": {"name": "movie_intent"},
+        },
+    }
+
+
+def inference_configuration(
+    genres: list[str], *, model: str = BEDROCK_MODEL_ID
+) -> dict[str, object]:
+    """Identify actual request settings without user text or credentials.
+
+    Replacing only the user query with a fixed placeholder makes this identity
+    comparable across requests. Prompt examples, schema, vocabulary, generation
+    settings, model, and endpoint all participate in the fingerprint.
+    """
+    endpoint = f"https://bedrock-mantle.{AWS_REGION}.api.aws/v1/"
+    payload = request_payload("<user query>", genres, model)
+    fingerprint = sha256(
+        json.dumps(
+            {"endpoint": endpoint, "request": payload}, sort_keys=True
+        ).encode()
+    ).hexdigest()
+    return {
+        "provider": "bedrock",
+        "model": model,
+        "region": AWS_REGION,
+        "endpoint": endpoint,
+        "max_completion_tokens": MAX_OUTPUT_TOKENS,
+        "temperature": payload["temperature"],
+        "catalog_genres": len(genres),
+        "fingerprint": fingerprint,
+    }
 
 
 class BedrockAuth(httpx.Auth):
@@ -116,34 +173,13 @@ class BedrockIntentParser:
 
     def parse(self, query: str, genres: list[str]) -> MovieIntent:
         """Force one structured result and reject truncated/malformed output."""
-        messages = intent_messages(query, genres, tool_call=True)
-        if len(json.dumps(messages).encode("utf-8")) > MAX_INPUT_BYTES:
+        payload = request_payload(query, genres, self.model)
+        if len(json.dumps(payload["messages"]).encode()) > MAX_INPUT_BYTES:
             raise ModelUnavailableError("Search context exceeds its limit.")
         try:
             response = self.client.post(
                 "chat/completions",
-                json={
-                    "model": self.model,
-                    "messages": messages,
-                    "max_completion_tokens": MAX_OUTPUT_TOKENS,
-                    "temperature": 0,
-                    "parallel_tool_calls": False,
-                    "tools": [
-                        {
-                            "type": "function",
-                            "function": {
-                                "name": "movie_intent",
-                                "description": "Extract movie search intent.",
-                                "parameters": ModelIntent.model_json_schema(),
-                                "strict": True,
-                            },
-                        }
-                    ],
-                    "tool_choice": {
-                        "type": "function",
-                        "function": {"name": "movie_intent"},
-                    },
-                },
+                json=payload,
             )
             response.raise_for_status()
         except (httpx.HTTPError, BotoCoreError, ClientError) as error:

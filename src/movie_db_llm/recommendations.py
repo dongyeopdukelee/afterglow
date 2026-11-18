@@ -10,7 +10,7 @@ from pydantic import (
     StringConstraints,
     model_validator,
 )
-from sqlalchemy import func, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, load_only, selectinload
 
 from movie_db_llm.models import Movie, MovieGenre
@@ -85,15 +85,16 @@ class IntentParser(Protocol):
         ...
 
 
+def catalog_genres_query() -> Select[tuple[str]]:
+    """Use the same sorted catalog vocabulary in the API and evaluations."""
+    return select(MovieGenre.genre).distinct().order_by(MovieGenre.genre)
+
+
 def recommend_movies(
     query: str, session: Session, parser: IntentParser
 ) -> tuple[MovieIntent, Sequence[Movie]]:
     """Validate intent and combine filters using parameterized ORM queries."""
-    genres = list(
-        session.scalars(
-            select(MovieGenre.genre).distinct().order_by(MovieGenre.genre)
-        )
-    )
+    genres = list(session.scalars(catalog_genres_query()))
     intent = parser.parse(query, genres)
     if intent.unsupported_constraints:
         raise UnsupportedRequestError(intent.unsupported_constraints)
