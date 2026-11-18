@@ -167,7 +167,7 @@ def bedrock_client() -> httpx.Client:
 
 
 class BedrockIntentParser:
-    """Use the same validated intent and year semantics as local inference."""
+    """Apply the shared intent and year rules to Bedrock tool responses."""
 
     def __init__(
         self, client: httpx.Client, model: str = BEDROCK_MODEL_ID

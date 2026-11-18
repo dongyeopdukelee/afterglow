@@ -1,7 +1,8 @@
 # Afterglow
 
-A small movie catalog with a React/TypeScript website and a FastAPI API for
-local natural-language retrieval, built as a system-design learning project.
+A small movie catalog with a React/TypeScript website and a FastAPI backend
+for natural-language searches by genre, year, and title, built as a
+system-design learning project.
 
 See the [product roadmap](docs/roadmap.md) for the planned path from a catalog
 API to grounded natural-language movie recommendations.
@@ -31,27 +32,31 @@ Run the API with automatic reload through the WSL launcher:
 scripts/dev-api.sh
 ```
 
-Bedrock is the normal inference provider for development and the future hosted
-application. Both use the same application configuration, Mantle adapter,
-prompt, schema, and generation settings. The current model is Ministral 8B in
-Oregon; changing the model or settings requires re-running live acceptance.
-The launcher uses the existing WSL-only `afterglow` profile, clears inherited
-credential overrides, and keeps the default Windows-linked AWS directory out
-of this workflow. For first-time setup or an expired login, see
+The API listens at `http://127.0.0.1:8000`. Recommendation searches use
+paid Amazon Bedrock inference by default. The API sends the query and catalog
+genre labels using the same settings intended for deployment. Browsing and
+loading synopses use only the catalog. To verify or renew the launcher's
+`afterglow` WSL login, see
 [project authentication](docs/website.md#deployment-administrator-profile).
 
-Inspect the safe configuration fingerprint, or run the bounded real-model
-check with the imported catalog:
+To run the local website, use Node.js 24+ and start Vite in another terminal:
 
 ```bash
-uv run --locked --no-env-file movie-db-llm inference-config
-scripts/dev-api.sh --check
+cd frontend
+npm ci --ignore-scripts
+npm run fonts
+npm run dev
 ```
 
-The fingerprint includes the actual request contract and genre vocabulary,
-but no user query or credentials. The check makes up to ten paid Bedrock
-requests and reports actual usage/latency and the fingerprint. It is separate
-from deterministic regression tests and does not validate semantic search.
+Open `http://127.0.0.1:5173`. Vite proxies API calls to the backend above.
+For an auto-updating preview that can stay running alongside browser tests,
+use the [dedicated preview ports](docs/website.md#interactive-preview-during-development).
+See [website development](docs/website.md) for build, browser verification and
+deployment prerequisites. This milestone runs locally; AWS deployment and
+plot/mood matching remain upcoming.
+
+See [poster sourcing and storage](docs/posters.md) for the bundled artwork
+and the separate offline catalog-wide acquisition CLI.
 
 ### Optional offline inference
 
@@ -81,29 +86,7 @@ INTENT_PROVIDER=ollama scripts/dev-api.sh
 ```
 
 An Ollama result does not establish acceptance for the Bedrock route, and
-provider failures never trigger an automatic switch. Catalog browsing and
-movie details do not need inference.
-
-The API is available at `http://127.0.0.1:8000`.
-
-To run the local website, use Node.js 24+ and start Vite in another terminal:
-
-```bash
-cd frontend
-npm ci --ignore-scripts
-npm run fonts
-npm run dev
-```
-
-Open `http://127.0.0.1:5173`. Vite proxies API calls to the backend above.
-For an auto-updating preview that can stay running alongside browser tests,
-use the [dedicated preview ports](docs/website.md#interactive-preview-during-development).
-See [website development](docs/website.md) for build, browser verification and
-deployment prerequisites. This milestone runs locally; AWS deployment and
-plot/mood matching remain upcoming.
-
-See [poster sourcing and storage](docs/posters.md) for the bundled artwork
-and the separate offline catalog-wide acquisition CLI.
+provider failures never trigger an automatic switch.
 
 ## API
 
@@ -162,12 +145,28 @@ The API never executes model-generated SQL.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `INTENT_PROVIDER` | `bedrock` | Select `ollama` or `bedrock`; unknown values return 503 without fallback |
+| `INTENT_PROVIDER` | `bedrock` | Select `bedrock` or `ollama` for recommendations. An unknown value makes this route return HTTP 503. |
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Ollama service URL |
 | `OLLAMA_MODEL` | `qwen3.5:2b` | Locally downloaded model tag |
 | `OLLAMA_TIMEOUT_SECONDS` | `120` | HTTP inference timeout in seconds |
 | `AWS_REGION` | `us-west-2` | Bedrock client region; explicitly set to override the Oregon default |
 | `BEDROCK_MODEL_ID` | `mistral.ministral-3-8b-instruct` | Mantle model supporting the `/v1` Chat Completions forced-function contract; overrides require live validation |
+
+Run the configuration report from the repository root with the API's
+`DATABASE_URL` and provider settings. It works without AWS credentials or a
+model call.
+
+```bash
+uv run --locked --no-env-file movie-db-llm inference-config
+```
+
+For Bedrock, the report reads the SQLite catalog in read-only mode and prints
+a SHA-256 fingerprint of the regional endpoint and request body. The digest
+covers the model, prompt examples, tool schema, generation settings, and genre
+labels. A fixed placeholder takes the place of the user's query. For Ollama,
+the report identifies the selected provider and model. The command exits
+nonzero for an unknown provider. The Bedrock report also fails if the region
+is malformed or the SQLite catalog cannot be read.
 
 ## Tests and checks
 
@@ -184,10 +183,14 @@ uv run pyright
 GitHub Actions runs these checks for pull requests and pushes to `main`. It
 also builds the production image, creates a disposable Docker Compose catalog,
 and checks the running API over HTTP. A separate job runs the
-[website build and browser checks](docs/website.md#verify). The workflow does
-not download the local Ollama model. Python recommendation tests use mocked
-model responses; the Compose smoke test only checks health and catalog browsing
-without starting Ollama.
+[website build and browser checks](docs/website.md#verify). Python recommendation
+tests use mocked model responses, and the Compose smoke test checks health
+and catalog browsing. CI requires neither AWS inference nor Ollama weights.
+
+After changing the Bedrock model or its request settings, use the imported
+catalog for the
+[paid parser evaluation](docs/aws-readiness.md#repeat-the-bounded-live-parsing-check)
+and the [HTTP acceptance cases](docs/aws-readiness.md#repeat-the-http-acceptance-cases).
 
 ## Docker Compose
 
@@ -201,7 +204,8 @@ docker compose run --rm api movie-db-llm import-cmu
 docker compose up
 ```
 
-Open `http://127.0.0.1:8000/docs` or call:
+Compose publishes the API only on the host's loopback interface. Open
+`http://127.0.0.1:8000/docs` or query the catalog from the host.
 
 ```bash
 curl http://127.0.0.1:8000/health
@@ -223,7 +227,8 @@ docker compose --profile offline up -d ollama
 docker compose --profile offline exec ollama ollama pull "${OLLAMA_MODEL:-qwen3.5:2b}"
 ```
 
-With both service images and the model cached, start the offline stack.
+With both images and the model cached, select Ollama for the API and enable
+the offline profile to start its model service.
 
 ```bash
 INTENT_PROVIDER=ollama docker compose --profile offline up --pull never

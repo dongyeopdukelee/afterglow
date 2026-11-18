@@ -46,14 +46,15 @@ The ignored `.tools/preview` directory keeps the real CMU snapshot persistent
 and separate from disposable test databases. For later schema changes, apply
 the migrations to this database before restarting its API.
 
-Start the servers in two terminals from the root of the persistent worktree.
-For the WSL Bedrock preview, use the
-[hosted API command](#hosted-intent-parsing-not-yet-deployed).
-For local inference, start Ollama and run the API with this command.
+Start the WSL API and Vite in two terminals from the root of the persistent
+worktree. Recommendation searches make paid Bedrock calls by default. For
+offline inference with either preview, start the Ollama service and prefix
+the API command with `INTENT_PROVIDER=ollama`. See
+[offline setup](../README.md#optional-offline-inference).
 
 ```sh
-INTENT_PROVIDER=ollama DATABASE_URL="sqlite:///$PWD/.tools/preview/catalog.sqlite3" \
-  uv run uvicorn movie_db_llm.main:app --host 127.0.0.1 --port 8001 --reload
+DATABASE_URL="sqlite:///$PWD/.tools/preview/catalog.sqlite3" \
+  scripts/dev-api.sh --port 8001
 ```
 
 ```sh
@@ -71,12 +72,10 @@ For an independent UI redesign preview, run the other checkout's API on 8002
 and Vite on 5175. From the persistent worktree, run
 `export PREVIEW_CATALOG="$PWD/.tools/preview/catalog.sqlite3"` before switching
 the shell to the redesign checkout. Its API opens the same catalog read-only.
-For Bedrock, substitute the read-only URL below and port 8002 in the
-[hosted API command](#hosted-intent-parsing-not-yet-deployed).
 
 ```sh
-INTENT_PROVIDER=ollama DATABASE_URL="sqlite:///file:$PREVIEW_CATALOG?mode=ro&uri=true" \
-  uv run uvicorn movie_db_llm.main:app --host 127.0.0.1 --port 8002 --reload
+DATABASE_URL="sqlite:///file:$PREVIEW_CATALOG?mode=ro&uri=true" \
+  scripts/dev-api.sh --port 8002
 ```
 
 ```sh
@@ -148,10 +147,11 @@ registration/renewal quote within the [selected budget](decisions.md#product-sco
 The owner-authorized `afterglow` IAM role uses temporary sessions,
 not permanent access keys. On the current WSL host, its private CLI config is
 `/home/dukelee/.config/afterglow/aws/config`; the profile is `afterglow`.
-Exported access keys can take precedence over a profile selected through
-`AWS_PROFILE`. The CLI examples select the profile with `--profile`. The
-application and importer commands use `env -u` to clear inherited profile,
-key, web identity, and container credential overrides for the launched process.
+Exported access keys can take precedence over `AWS_PROFILE`. The CLI examples
+select the profile with `--profile`. The WSL launcher clears inherited
+profile, key, web identity, and container credential overrides, selects the
+private project paths, and disables dotenv loading for uv and Uvicorn. The
+poster importer example clears the inherited overrides with `env -u`.
 [AWS credential precedence](https://docs.aws.amazon.com/cli/latest/topic/config-vars.html#credentials)
 
 Verify the assumed identity with the private config.
@@ -183,33 +183,15 @@ this project session. On this host the default `.aws` path points to Windows;
 the explicit paths above keep project authentication inside WSL. Never copy
 tokens into this repository, logs or chat.
 
-The role's administrator
-permissions are for deployment tooling only; do not assign it to the website
-or API runtime. No hosting resources have been provisioned by this role setup.
+For this role's use in WSL and the hosted runtime identity, see the
+[project decisions](decisions.md#product-scope).
 
 ### Hosted intent parsing (not yet deployed)
 
-The local preview makes paid Bedrock calls for recommendations. Run this
-command from the persistent worktree to start Uvicorn on port 8001 with the
-prepared preview catalog. Refresh an expired session with the
-[project login](#deployment-administrator-profile).
-
-```sh
-DATABASE_URL="sqlite:///$PWD/.tools/preview/catalog.sqlite3" \
-  scripts/dev-api.sh --port 8001
-```
-
-The launcher selects the WSL `afterglow` profile under
-`$HOME/.config/afterglow/aws`, clears inherited credential overrides, and
-disables dotenv loading. The server uses the shared application model settings.
-Run `uv run --locked --no-env-file movie-db-llm inference-config` with the
-server's `DATABASE_URL` to inspect the fingerprint. Run `scripts/dev-api.sh --check`
-for the bounded live evaluation with Bedrock selected. Set
-`INTENT_PROVIDER=ollama` to start an offline server.
-
-See [inference configuration](../README.md#inference-configuration) for provider
-settings and defaults, and the [API contract](../README.md#api) for failure
-responses. Hosted parsing uses one IAM-signed Mantle Chat Completions call
+To inspect the Bedrock fingerprint, use the preview catalog and the server's
+provider settings with the [configuration report](../README.md#inference-configuration).
+For failure responses, see the [API contract](../README.md#api).
+Bedrock parsing uses one IAM-signed Mantle Chat Completions call
 through the regional `/v1` route, at most 1,024 completion tokens (including
 reasoning), a bounded input context, and no automatic paid retries. It requires
 exactly one `movie_intent` function call and rejects truncated output, refusals,

@@ -54,7 +54,9 @@ def main() -> int:
             genres = catalog_genres(connection)
     except SQLAlchemyError, ValueError:
         print(
-            json.dumps({"status": "blocked", "message": "Cannot read catalog."})
+            json.dumps(
+                {"status": "blocked", "message": "Cannot read catalog."}
+            )
         )
         return 1
     if not {"Comedy", "Horror", "Thriller"}.issubset(genres):

@@ -13,11 +13,6 @@ resources or resolve the historical runtime throttling below.
 
 ### Shared local-development configuration
 
-Normal development now defaults to the same Bedrock adapter and application
-configuration intended for deployment. `scripts/dev-api.sh` supplies only
-WSL authentication and server startup; model settings remain in the shared
-application configuration. Ollama is an explicit offline alternative.
-
 The 2026-11-18 development-parity recheck passed all ten live cases with 363
 catalog genre labels. The batch reported 34,127 input tokens and 484 completion
 tokens. Per-case evaluator time ranged from 239 to 1,667 ms (median 385.5 ms),
@@ -32,18 +27,16 @@ post-2000 thrillers, and literal `dog` title searches. A detail request loaded
 the synopsis. Plot, OR, and greeting requests returned 422 without cards.
 The temporary smoke API was stopped afterward.
 
-`uv run --locked --no-env-file movie-db-llm inference-config` reports the
-same fingerprint used by the live evaluator. It covers the model, endpoint,
-generation settings, prompt examples, schema, and genre labels in the outgoing
-request. A fixed placeholder takes the place of the user query. Comparing
-movie results also requires the same catalog snapshot.
-No public application has been deployed, so hosted behavior still needs
-post-deployment verification with the same cases and configuration.
+Public deployment and verification of the hosted API are still pending.
 
 ### Repeat the HTTP acceptance cases
 
-Use the same imported CMU snapshot and fingerprint for local and hosted
-checks. Set `API_BASE` to the API under test. Send each JSON body verbatim to
+Use the same imported CMU snapshot for local and hosted checks. In each
+environment, compare the fingerprint from the accepted live batch with the
+[inference-config report](../README.md#inference-configuration).
+The six POSTs below make separate Bedrock calls, including the searches the
+API rejects after parsing.
+Set `API_BASE` to the API under test. Send each JSON body verbatim to
 `POST /recommendations` with `Content-Type: application/json`. For example,
 the first request against the local API is
 
@@ -291,9 +284,8 @@ USD 0.1554048/month. Calculated with Python `Decimal`; no free-tier credits
 were subtracted. Actual input includes the catalog vocabulary and examples.
 
 This excludes initial catalog embeddings, storage, vector queries, hosting,
-logs, quotas, DNS, taxes, and abuse traffic. The complete deployment estimate
-and the USD 10/month budget check are **not yet verified**. In particular,
-this scenario is not a spending cap; server-enforced quotas remain required.
+logs, quotas, DNS, taxes, and abuse traffic. The full cost estimate and
+server-enforced quotas are still [release gates](#gates-before-continuing-to-public-release).
 
 ## Gates before continuing to public release
 
@@ -302,36 +294,37 @@ this scenario is not a spending cap; server-enforced quotas remain required.
    runtime rejection.
 2. Evaluate semantic synopsis requests against known films, including
    requests that also specify a genre, year or title filter.
-3. Validate vector-store filtering. Before provisioning, estimate parsing,
-   embedding, initial ingestion and hosting costs against the
-   [demo budget](decisions.md#product-scope).
+3. Validate vector-store filtering. Before provisioning, count development
+   and production parsing, embedding, ingestion, storage, and hosting costs
+   toward the [project budget](decisions.md#product-scope).
 4. Implement and verify fail-closed allowances before exposing paid searches
    to public visitors.
-5. Verify the public browser-to-catalog path, then select the custom domain.
+5. Repeat the [HTTP acceptance cases](#repeat-the-http-acceptance-cases)
+   against the deployed API and verify the public browser-to-catalog path
+   before selecting the custom domain.
 
-Do not publish a recommendation-quality pass, latency measurement, or token
-usage measurement until the corresponding live request has succeeded.
+A recommendation-quality pass requires a live response that meets the case's
+expected result.
 
 ## Repeat the bounded live parsing check
 
-Run this paid development check manually outside CI. The required `--live`
-flag authorizes up to ten model calls. The script exits nonzero on the first
-blocked or incorrect result. It checks decade bounds, all five year comparisons,
-literal title punctuation, unsupported plot/OR requests and an unconstrained
-greeting against fixed expected behavior.
-Each attempted parse records the batch fingerprint, parser latency, and
-provider-reported token counts, including usage returned with an incomplete
-model response. Missing usage is recorded as `null`.
-
-To repeat the catalog-backed run, set `DATABASE_URL` to the migrated,
-imported database. The command reads its distinct genre labels and uses the
+In WSL, set `DATABASE_URL` to the migrated, imported catalog used by the API.
+Run the launcher manually outside CI with the
 [private WSL profile](website.md#deployment-administrator-profile).
+The `--check` option authorizes up to ten paid Bedrock calls.
 
 ```sh
 scripts/dev-api.sh --check
 ```
 
-The evaluator requires the active Bedrock provider and opens SQLite read-only.
-It stops before AWS client setup if the file or schema is missing, or if the
-catalog lacks any of the three required genres (`Comedy`, `Horror`, and
-`Thriller`).
+The evaluator requires Bedrock as the active provider. It reads the catalog's
+distinct genre labels in read-only mode and stops before AWS client setup if
+the file, schema, or a required genre (`Comedy`, `Horror`, `Thriller`) is
+missing.
+
+The cases cover decade bounds, all five year comparisons, literal title
+punctuation, unsupported plot and OR requests, and a greeting. Each attempted
+parse records the batch fingerprint, parser latency, and provider-reported
+token counts, including usage returned with an incomplete response. Missing
+usage is recorded as `null`. The evaluator exits nonzero on the first blocked
+or incorrect result.

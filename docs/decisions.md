@@ -29,14 +29,13 @@ when a decision is made, changed, or removed.
   release: structured catalog retrieval first, then semantic vector search.
 - The structured-retrieval step will use an LLM to parse a user request and
   the application to query the catalog database.
-- Normal local development and hosted deployment will use the same Bedrock
-  parsing model, endpoint family, region, prompts, intent schema, and inference
-  settings. The primary reason is to make local model-behavior checks closely
-  reflect the deployed application. Keep these choices in shared,
-  version-controlled application configuration rather than separate
-  environment-specific model defaults.
-- Ollama/Qwen may remain an explicit offline option, but checks against a
-  different model do not establish acceptance for the hosted Bedrock route.
+- Normal local development and hosted deployment will use the same on-demand
+  Bedrock model and adapter for intent parsing. Keep the endpoint family,
+  region, prompts, intent schema, and inference settings with the model in
+  shared, version-controlled application configuration so local model-behavior
+  checks exercise the request path intended for deployment.
+- Ollama with Qwen is an explicit offline option. Model acceptance for the
+  hosted route requires a live check against Bedrock.
 - Structured request intent will support catalog genre labels, an optional
   release-year range, and title keywords.
 - Each recommendation request will return at most 10 movie cards.
@@ -55,11 +54,11 @@ when a decision is made, changed, or removed.
   queries from constrained parsed fields.
 - The vector-search step will combine semantic synopsis retrieval with the
   structured metadata filters.
-- When semantic retrieval is added, local development and hosted deployment
-  will also share the embedding model and compatible vector settings. Record
-  the embedding configuration and catalog version with the index so retrieval
-  evaluations use a known, compatible index. The parsing and embedding models
-  can be different; query and synopsis embeddings must be compatible.
+- When semantic retrieval is added, use the same embedding model and
+  compatible vector settings for queries and synopses in both development
+  and deployment. Record the embedding configuration and catalog version with
+  the index so retrieval evaluations use a known, compatible index. The parser
+  can use a different model.
 - User accounts, visitor-time external movie-data provider APIs, and
   LLM-generated recommendation explanations are deferred.
 - Afterglow will have a public React/TypeScript website, built with Vite.
@@ -99,18 +98,15 @@ when a decision is made, changed, or removed.
   while projected total project spending remains within the $10/month budget.
   Repeated small charges still count toward the monthly total; flag expected
   budget overruns.
-- Production and normal local-development inference will use on-demand Amazon
-  Bedrock. Model selection for public deployment requires accuracy and
-  token-cost checks.
+- Model selection for public deployment requires accuracy and token-cost checks.
 - Select hosted inference from existing account quotas; quota-increase requests
   are out of scope for the current deployment phase. A positive quota listing
   does not replace successful live invocation and quality checks.
-- Hosted intent extraction uses Bedrock Mantle Chat Completions, signed using
-  temporary IAM credentials. See [inference configuration](../README.md#inference-configuration)
-  for the shared model and regional defaults. The selected Ministral 8B route
-  passed the ten-case structured-intent evaluation recorded in
-  [AWS readiness](aws-readiness.md); public deployment remains pending.
-- Hosted intent extraction requires validated tool output, shared
+- Bedrock intent extraction uses Mantle Chat Completions signed with temporary
+  IAM credentials. For model and regional defaults, see
+  [inference configuration](../README.md#inference-configuration).
+  Live results and deployment status are recorded in [AWS readiness](aws-readiness.md).
+- Bedrock intent extraction requires validated tool output, shared
   application-owned year semantics, bounded input/output, and no silent
   fallback to another provider. Keep deterministic regression tests separate
   from bounded live Bedrock evaluations; use the production inference
@@ -124,10 +120,11 @@ when a decision is made, changed, or removed.
   credits. Lambda/API Gateway, S3/CloudFront and a read-only catalog snapshot
   are the target hosting approach; vector-storage compatibility and costs must
   be validated before provisioning.
-- Owner-authorized deployment administration uses the `afterglow` IAM role
-  with AWS's managed `AdministratorAccess` policy. Only the owner's existing
+- Owner-authorized deployment administration and local Bedrock calls from the
+  WSL launcher use the `afterglow` IAM role with AWS's managed
+  `AdministratorAccess` policy. Only the owner's existing
   `AccountFullAccessRole` can assume it, using one-hour temporary sessions.
-  This is a deployment-tooling role, not the application's runtime identity.
+  The hosted API will use its own execution role.
 
 ## Technology
 
@@ -152,7 +149,5 @@ when a decision is made, changed, or removed.
   `reports/health`, using existing Python checks and package build tooling.
   Report-only commits use the owner's verified account-associated author email
   and the workflow's GitHub token, without weakening branch protections.
-- Ollama remains an optional offline inference server over HTTP. The existing
-  Docker Compose setup runs it as a CPU service with persistent model storage;
-  GPU setup is deferred. Normal development targets the shared Bedrock route
-  described above.
+- The optional Docker Compose service runs Ollama on CPU with persistent
+  model storage. The API reaches it over HTTP. GPU setup is deferred.
