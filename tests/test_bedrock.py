@@ -583,9 +583,13 @@ def run_live_check(monkeypatch: pytest.MonkeyPatch, *arguments: str) -> int:
         FileNotFoundError("private credential helper path"),
         json.JSONDecodeError("private helper output", "malformed JSON", 0),
         UnicodeDecodeError("utf-8", b"\xff", 0, 1, "private helper output"),
+        AttributeError("private credential result is not an object"),
+        ValueError("private expiration cannot be parsed"),
+        TypeError("private expiration has the wrong type"),
+        RuntimeError("private refreshed credentials have expired"),
     ],
 )
-def test_credential_process_failure_is_sanitized(
+def test_credential_provider_failure_is_sanitized(
     hosted_api: httpx.Client,
     aws_client: httpx.Client,
     requests: list[httpx.Request],
@@ -622,6 +626,16 @@ def test_credential_process_failure_is_sanitized(
     }
     assert output.err == ""
     assert requests == []
+
+
+def test_unexpected_transport_error_propagates(
+    aws_client: httpx.Client, replies: Replies
+) -> None:
+    error = RuntimeError("transport programming error")
+    replies.append(error)
+    with pytest.raises(RuntimeError) as caught:
+        BedrockIntentParser(aws_client).parse("Comedies", ["Comedy"])
+    assert caught.value is error
 
 
 @pytest.mark.parametrize("region", ["us-west-2:443", "", "us-west-2\n"])
@@ -871,6 +885,98 @@ def test_live_check_uses_catalog_vocabulary(
     assert record["model"] == "catalog-test-model"
     assert record["catalog_genres"] == 5
     assert database.read_bytes() == before
+
+
+@pytest.mark.parametrize(
+    ("plot_genres", "or_filters", "use_catalog", "expected_statuses"),
+    [
+        (["Dog movies"], {}, False, ["pass"] * 7 + ["fail"]),
+        (
+            ["Comedy"],
+            {"genres": ["Horror", "Drama"]},
+            True,
+            ["pass"] * 8 + ["fail"],
+        ),
+        (
+            ["Comedy"],
+            {"unsupported_constraints": []},
+            False,
+            ["pass"] * 8 + ["fail"],
+        ),
+        (["Comedy"], {"genres": []}, False, ["pass"] * 10),
+    ],
+    ids=[
+        "invented-plot-genre",
+        "or-genre-absent-from-catalog",
+        "missing-reason",
+        "valid",
+    ],
+)
+def test_live_check_scores_rejections_against_supplied_genres(
+    aws_client: httpx.Client,
+    replies: Replies,
+    requests: list[httpx.Request],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    plot_genres: list[str],
+    or_filters: dict[str, object],
+    use_catalog: bool,
+    expected_statuses: list[str],
+) -> None:
+    empty = intent_payload(genres=[], title_keywords=[], year_filters=[])
+
+    def thriller(comparison: str) -> dict[str, object]:
+        return empty | {
+            "genres": ["Thriller"],
+            "year_filters": [{"comparison": comparison, "year": 2000}],
+        }
+
+    payloads = [
+        intent_payload(title_keywords=[]),
+        thriller("after"),
+        thriller("since"),
+        empty | {"title_keywords": ["A_B%/"]},
+        thriller("before"),
+        thriller("until"),
+        thriller("in"),
+        intent_payload(
+            genres=plot_genres,
+            title_keywords=[],
+            unsupported_constraints=["plot about dogs"],
+        ),
+        empty
+        | {
+            "genres": ["Horror", "Comedy"],
+            "unsupported_constraints": ["either genre was requested"],
+        }
+        | or_filters,
+        empty,
+    ]
+    arguments: list[str] = []
+    if use_catalog:
+        create_evaluation_catalog(
+            tmp_path, monkeypatch, ["Comedy", "Horror", "Thriller"]
+        )
+        arguments.append("--catalog")
+    replies.extend(
+        reply(payload) for payload in payloads[: len(expected_statuses)]
+    )
+    monkeypatch.setattr(bedrock, "bedrock_client", lambda: aws_client)
+
+    assert run_live_check(monkeypatch, *arguments) == (
+        1 if "fail" in expected_statuses else 0
+    )
+    records = [
+        json.loads(line) for line in capsys.readouterr().out.splitlines()
+    ]
+    assert [record["status"] for record in records] == expected_statuses
+    assert len(requests) == len(expected_statuses)
+    for record in records[7:9]:
+        assert record["expected"] == {
+            "genres": "must be a subset of the catalog genres",
+            "unsupported_constraints": "must be nonempty",
+        }
 
 
 @pytest.mark.parametrize("arguments", [[], ["--catalog"]])

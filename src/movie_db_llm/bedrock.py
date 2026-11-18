@@ -45,11 +45,15 @@ class BedrockAuth(httpx.Auth):
     ) -> Generator[httpx.Request, httpx.Response]:
         try:
             credentials = self.session.get_credentials()
-            if credentials is None:
-                raise NoCredentialsError()
-            frozen = credentials.get_frozen_credentials()
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+            frozen = (
+                credentials.get_frozen_credentials()
+                if credentials is not None
+                else None
+            )
+        except Exception as error:
             raise ModelUnavailableError(_UNAVAILABLE_MESSAGE) from error
+        if frozen is None:
+            raise NoCredentialsError()
         signed = AWSRequest(
             method=request.method,
             url=str(request.url),

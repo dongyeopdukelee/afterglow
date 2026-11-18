@@ -231,7 +231,7 @@ def main() -> int:
             usage.clear()
             started = perf_counter()
             try:
-                actual = model.parse(query, genres).model_dump()
+                intent = model.parse(query, genres)
             except (ModelUnavailableError, InvalidModelResponseError) as error:
                 print(
                     json.dumps(
@@ -243,10 +243,11 @@ def main() -> int:
                     )
                 )
                 return 1
-            passed = (
+            actual = intent.model_dump()
+            passed = all(genre in genres for genre in intent.genres) and (
                 actual == expected
                 if expected is not None
-                else bool(actual["unsupported_constraints"])
+                else bool(intent.unsupported_constraints)
             )
             measured_usage = usage[-1] if usage else None
             print(
@@ -257,7 +258,10 @@ def main() -> int:
                         "actual": actual,
                         "expected": expected
                         if expected is not None
-                        else {"unsupported_constraints": "must be nonempty"},
+                        else {
+                            "genres": "must be a subset of the catalog genres",
+                            "unsupported_constraints": "must be nonempty",
+                        },
                         "model": BEDROCK_MODEL_ID,
                         "region": AWS_REGION,
                         "catalog_genres": len(genres),
