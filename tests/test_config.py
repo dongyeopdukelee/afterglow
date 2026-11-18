@@ -20,7 +20,7 @@ def test_aws_region_selects_client_endpoint(
     tmp_path: Path,
     model: str | None,
 ) -> None:
-    """New clients use Oregon by default and honor AWS_REGION overrides."""
+    """Clients honor the region and model settings even with stale CA paths."""
     environment = {
         name: value
         for name, value in os.environ.items()
@@ -35,6 +35,8 @@ def test_aws_region_selects_client_endpoint(
             "AWS_SHARED_CREDENTIALS_FILE": str(
                 tmp_path / "absent-credentials"
             ),
+            "SSL_CERT_FILE": str(tmp_path / "absent-ca.pem"),
+            "SSL_CERT_DIR": str(tmp_path / "absent-ca-dir"),
         }
     )
     if region is not None:

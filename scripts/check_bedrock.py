@@ -104,10 +104,13 @@ def main() -> int:
                 )
             )
             return 1
-        if not genres:
-            print(
-                json.dumps({"status": "blocked", "message": "Empty catalog."})
+        if not {"Comedy", "Horror", "Thriller"}.issubset(genres):
+            message = (
+                "Benchmark requires Comedy, Horror and Thriller."
+                if genres
+                else "Empty catalog."
             )
+            print(json.dumps({"status": "blocked", "message": message}))
             return 1
     try:
         client = bedrock_client()
@@ -117,7 +120,7 @@ def main() -> int:
             json.dumps(
                 {
                     "status": "blocked",
-                    "message": "AWS credentials unavailable.",
+                    "message": "Check the AWS region and credentials.",
                 }
             )
         )

@@ -8,6 +8,7 @@ from collections.abc import Callable, Generator
 from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import cast
+from unittest.mock import Mock
 
 import boto3
 import httpx
@@ -16,6 +17,7 @@ from botocore.credentials import Credentials
 from botocore.exceptions import (
     ClientError,
     CredentialRetrievalError,
+    InvalidRegionError,
     NoCredentialsError,
 )
 from fastapi.testclient import TestClient
@@ -327,20 +329,13 @@ def test_oversized_context_makes_no_paid_request(
     assert requests == []
 
 
-def test_signer_refreshes_temporary_credentials(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_signer_refreshes_temporary_credentials() -> None:
     """Each signed request uses the current token, not a cached frozen key."""
-    session = boto3.Session(
-        aws_access_key_id="unused", aws_secret_access_key="unused"
-    )
-    credentials = iter(
-        [
-            Credentials("first-key", "first-secret", "first-token"),
-            Credentials("second-key", "second-secret", "second-token"),
-        ]
-    )
-    monkeypatch.setattr(session, "get_credentials", lambda: next(credentials))
+    session = Mock(spec=boto3.Session)
+    session.get_credentials.side_effect = [
+        Credentials("first-key", "first-secret", "first-token"),
+        Credentials("second-key", "second-secret", "second-token"),
+    ]
     sent: list[httpx.Request] = []
 
     def handle(request: httpx.Request) -> httpx.Response:
@@ -348,7 +343,7 @@ def test_signer_refreshes_temporary_credentials(
         return httpx.Response(200)
 
     with httpx.Client(
-        auth=BedrockAuth(session, "us-west-2"),
+        auth=BedrockAuth(cast(boto3.Session, session), "us-west-2"),
         transport=httpx.MockTransport(handle),
     ) as client:
         client.post(
@@ -371,13 +366,9 @@ def test_signer_refreshes_temporary_credentials(
         assert request.headers["x-amz-security-token"] == token
 
 
-def test_missing_credentials_never_send_a_request(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    session = boto3.Session(
-        aws_access_key_id="testing", aws_secret_access_key="testing"
-    )
-    monkeypatch.setattr(session, "get_credentials", lambda: None)
+def test_missing_credentials_never_send_a_request() -> None:
+    session = Mock(spec=boto3.Session)
+    session.get_credentials.return_value = None
     sent: list[httpx.Request] = []
 
     def handle(request: httpx.Request) -> httpx.Response:
@@ -386,7 +377,7 @@ def test_missing_credentials_never_send_a_request(
 
     with httpx.Client(
         base_url="https://bedrock-mantle.us-west-2.api.aws/v1/",
-        auth=BedrockAuth(session, "us-west-2"),
+        auth=BedrockAuth(cast(boto3.Session, session), "us-west-2"),
         transport=httpx.MockTransport(handle),
     ) as client:
         with pytest.raises(ModelUnavailableError) as caught:
@@ -573,13 +564,42 @@ def test_credentials_initialization_failure_is_sanitized(
     assert hosted_api.get("/movies").status_code == 200
 
 
-def live_check_main(monkeypatch: pytest.MonkeyPatch) -> Callable[[], int]:
-    monkeypatch.setattr(sys, "argv", ["check_bedrock.py", "--live"])
+def run_live_check(monkeypatch: pytest.MonkeyPatch, *arguments: str) -> int:
+    monkeypatch.setattr(
+        sys, "argv", ["check_bedrock.py", "--live", *arguments]
+    )
     root = Path(__file__).resolve().parents[1]
-    return cast(
+    main = cast(
         Callable[[], int],
         runpy.run_path(str(root / "scripts/check_bedrock.py"))["main"],
     )
+    return main()
+
+
+@pytest.mark.parametrize("region", ["us-west-2:443", "", "us-west-2\n"])
+def test_invalid_region_blocks_hosted_setup(
+    hosted_api: httpx.Client,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    region: str,
+) -> None:
+    monkeypatch.setattr(bedrock, "AWS_REGION", region)
+    monkeypatch.setattr(
+        boto3, "Session", lambda: pytest.fail("Invalid region reached AWS")
+    )
+    bedrock.bedrock_client.cache_clear()
+    monkeypatch.setattr(ollama, "bedrock_client", bedrock.bedrock_client)
+    with pytest.raises(InvalidRegionError):
+        bedrock.bedrock_client()
+
+    response = hosted_api.post("/recommendations", json={"query": "Comedies"})
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Hosted search is unavailable."}
+    assert run_live_check(monkeypatch) == 1
+    assert json.loads(capsys.readouterr().out) == {
+        "status": "blocked",
+        "message": "Check the AWS region and credentials.",
+    }
 
 
 def test_live_check_initialization_failure_is_sanitized(
@@ -591,10 +611,10 @@ def test_live_check_initialization_failure_is_sanitized(
         raise credential_error
 
     monkeypatch.setattr(bedrock, "bedrock_client", unavailable)
-    assert live_check_main(monkeypatch)() == 1
+    assert run_live_check(monkeypatch) == 1
     assert json.loads(capsys.readouterr().out) == {
         "status": "blocked",
-        "message": "AWS credentials unavailable.",
+        "message": "Check the AWS region and credentials.",
     }
 
 
@@ -606,7 +626,7 @@ def test_live_check_service_failure_stops_without_leaking_details(
 ) -> None:
     replies.append(httpx.Response(401, text="private account details"))
     monkeypatch.setattr(bedrock, "bedrock_client", lambda: aws_client)
-    assert live_check_main(monkeypatch)() == 1
+    assert run_live_check(monkeypatch) == 1
     assert json.loads(capsys.readouterr().out)["message"] == (
         "Hosted search is temporarily unavailable."
     )
@@ -621,8 +641,9 @@ def test_live_check_reports_wrong_results_and_measured_usage(
     # The decade query must not silently acquire an unrelated title filter.
     replies.append(reply(intent_payload()))
     monkeypatch.setattr(config, "BEDROCK_MODEL_ID", "evaluation-test-model")
+    monkeypatch.setattr(config, "DATABASE_URL", "invalid-database-url")
     monkeypatch.setattr(bedrock, "bedrock_client", lambda: aws_client)
-    assert live_check_main(monkeypatch)() == 1
+    assert run_live_check(monkeypatch) == 1
     record = json.loads(capsys.readouterr().out)
     assert record["status"] == "fail"
     assert record["usage"] == {
@@ -631,6 +652,7 @@ def test_live_check_reports_wrong_results_and_measured_usage(
         "total_tokens": 150,
     }
     assert record["model"] == "evaluation-test-model"
+    assert record["catalog_genres"] == 4
     assert record["latency_ms"] >= 0
     assert aws_client.event_hooks["response"] == []
 
@@ -664,11 +686,7 @@ def test_live_check_blocks_invalid_catalog_before_aws(
         pytest.fail("AWS client initialized before catalog validation")
 
     monkeypatch.setattr(bedrock, "bedrock_client", forbidden)
-    main = live_check_main(monkeypatch)
-    monkeypatch.setattr(
-        sys, "argv", ["check_bedrock.py", "--live", "--catalog"]
-    )
-    assert main() == 1
+    assert run_live_check(monkeypatch, "--catalog") == 1
     assert json.loads(capsys.readouterr().out) == {
         "status": "blocked",
         "message": "Empty catalog."
@@ -710,13 +728,9 @@ def test_evaluator_catalog_connection_rejects_writes(
     assert database.read_bytes() == before
 
 
-def test_live_check_uses_catalog_vocabulary(
-    aws_client: httpx.Client,
-    replies: Replies,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    tmp_path: Path,
-) -> None:
+def create_evaluation_catalog(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, genres: list[str]
+) -> Path:
     database = tmp_path / "catalog.sqlite3"
     engine = create_engine(f"sqlite:///{database}")
     Base.metadata.create_all(engine)
@@ -725,23 +739,65 @@ def test_live_check_uses_catalog_vocabulary(
             Movie(
                 title="Example",
                 synopsis="A story",
-                genre_assignments=[MovieGenre(genre="Mystery")],
+                genre_assignments=[
+                    MovieGenre(genre=genre) for genre in genres
+                ],
             )
         )
         session.commit()
     engine.dispose()
-    before = database.read_bytes()
     monkeypatch.setattr(config, "DATABASE_URL", f"sqlite:///{database}")
+    return database
+
+
+@pytest.mark.parametrize(
+    "genres",
+    [
+        ["Mystery", "Horror", "Thriller"],
+        ["Comedy", "Mystery", "Thriller"],
+        ["Comedy", "Horror", "Mystery"],
+    ],
+)
+def test_live_check_blocks_catalog_missing_a_benchmark_genre(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    genres: list[str],
+) -> None:
+    database = create_evaluation_catalog(tmp_path, monkeypatch, genres)
+    before = database.read_bytes()
+    monkeypatch.setattr(
+        bedrock,
+        "bedrock_client",
+        lambda: pytest.fail("Invalid catalog reached AWS"),
+    )
+    assert run_live_check(monkeypatch, "--catalog") == 1
+    assert json.loads(capsys.readouterr().out) == {
+        "status": "blocked",
+        "message": "Benchmark requires Comedy, Horror and Thriller.",
+    }
+    assert database.read_bytes() == before
+
+
+def test_live_check_uses_catalog_vocabulary(
+    aws_client: httpx.Client,
+    replies: Replies,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    database = create_evaluation_catalog(
+        tmp_path,
+        monkeypatch,
+        ["Comedy", "Horror", "Mystery", "Thriller", "Western"],
+    )
+    before = database.read_bytes()
     monkeypatch.setattr(bedrock, "bedrock_client", lambda: aws_client)
     replies.append(reply(intent_payload()))
-    main = live_check_main(monkeypatch)
-    monkeypatch.setattr(
-        sys, "argv", ["check_bedrock.py", "--live", "--catalog"]
-    )
-    assert main() == 1  # Deliberately wrong inference, not a catalog failure.
+    assert run_live_check(monkeypatch, "--catalog") == 1
     record = json.loads(capsys.readouterr().out)
     assert record["status"] == "fail"
-    assert record["catalog_genres"] == 1
+    assert record["catalog_genres"] == 5
     assert database.read_bytes() == before
 
 

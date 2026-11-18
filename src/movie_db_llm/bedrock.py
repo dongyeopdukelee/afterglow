@@ -9,7 +9,13 @@ import boto3
 import httpx
 from botocore.auth import SigV4Auth
 from botocore.awsrequest import AWSRequest
-from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
+from botocore.exceptions import (
+    BotoCoreError,
+    ClientError,
+    InvalidRegionError,
+    NoCredentialsError,
+)
+from botocore.utils import validate_region_name
 from pydantic import BaseModel, Field, ValidationError
 
 from movie_db_llm.config import AWS_REGION, BEDROCK_MODEL_ID
@@ -80,11 +86,13 @@ class _Response(BaseModel):
 @lru_cache(maxsize=1)
 def bedrock_client() -> httpx.Client:
     """Reuse connections, never API keys or a captured expiring credential."""
+    if not AWS_REGION or AWS_REGION != AWS_REGION.strip():
+        raise InvalidRegionError(region_name=AWS_REGION)
+    validate_region_name(AWS_REGION)
     return httpx.Client(
         base_url=f"https://bedrock-mantle.{AWS_REGION}.api.aws/v1/",
         auth=BedrockAuth(boto3.Session(), AWS_REGION),
         timeout=httpx.Timeout(20, connect=5),
-        transport=httpx.HTTPTransport(retries=0),
         follow_redirects=False,
         trust_env=False,
     )

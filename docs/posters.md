@@ -78,14 +78,20 @@ Upload completed files to the existing private bucket using the WSL-only
 deployment profile described below. Sync is additive; do not use `--delete`:
 
 ```sh
+export AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config
+export AWS_SHARED_CREDENTIALS_FILE=/home/dukelee/.config/afterglow/aws/credentials
+export AWS_LOGIN_CACHE_DIRECTORY=/home/dukelee/.config/afterglow/aws/login-cache
+export AWS_PROFILE=afterglow
+export AWS_REGION=us-west-2
+
 aws s3 sync .tools/tmdb-posters/images/ "s3://$POSTER_BUCKET/posters/" \
-  --region us-west-2 --sse AES256 --only-show-errors
+  --sse AES256 --only-show-errors
 aws s3 cp .tools/tmdb-posters/manifest.json \
   "s3://$POSTER_BUCKET/batches/tmdb/manifest.json" \
-  --region us-west-2 --sse AES256
+  --sse AES256
 aws s3 cp .tools/tmdb-posters/coverage.json \
   "s3://$POSTER_BUCKET/batches/tmdb/coverage.json" \
-  --region us-west-2 --sse AES256
+  --sse AES256
 ```
 
 These operational files and downloaded bulk assets are ignored by Git; the

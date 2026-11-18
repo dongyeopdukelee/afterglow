@@ -276,5 +276,7 @@ AWS_PROFILE=afterglow AWS_REGION=us-west-2 \
 ```
 
 Omit `--catalog` to run the same cases with the fixed four-genre vocabulary.
-With `--catalog`, SQLite is opened read-only. A missing file, missing schema,
-or empty genre catalog produces a blocked result before AWS client setup.
+With `--catalog`, the evaluator opens SQLite read-only. It reports a blocked
+result before AWS client setup if the file or schema is missing, or if the
+catalog lacks any of the three genres the cases require (`Comedy`, `Horror`,
+and `Thriller`).
