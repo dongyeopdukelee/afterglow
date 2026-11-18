@@ -111,7 +111,6 @@ class BedrockIntentParser:
                     "model": self.model,
                     "messages": messages,
                     "max_completion_tokens": MAX_OUTPUT_TOKENS,
-                    "reasoning_effort": "low",
                     "temperature": 0,
                     "parallel_tool_calls": False,
                     "tools": [

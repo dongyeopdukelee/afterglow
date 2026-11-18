@@ -56,7 +56,7 @@ TOOL_INSTRUCTION = (
 )
 
 
-EXAMPLES: list[tuple[str, dict[str, object]]] = [
+EXAMPLES: list[tuple[str, dict[str, list[object]]]] = [
     (
         "Thriller movies after 1975",
         {
@@ -130,7 +130,10 @@ def intent_messages(
             "content": instruction + SYSTEM_RULES + json.dumps(genres),
         }
     ]
+    catalog_genres = set(genres)
     for index, (example, filters) in enumerate(EXAMPLES):
+        if not catalog_genres.issuperset(filters.get("genres", [])):
+            continue
         intent: dict[str, object] = {
             "unsupported_constraints": [],
             "genres": [],

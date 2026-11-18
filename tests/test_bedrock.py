@@ -5,6 +5,7 @@ import runpy
 import subprocess
 import sys
 from collections.abc import Callable, Generator
+from contextlib import AbstractContextManager
 from pathlib import Path
 from typing import cast
 
@@ -18,13 +19,15 @@ from botocore.exceptions import (
     NoCredentialsError,
 )
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event
+from sqlalchemy import URL, Connection, create_engine, event, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-from movie_db_llm import bedrock, ollama
+from movie_db_llm import bedrock, config, ollama
 from movie_db_llm.bedrock import BedrockAuth, BedrockIntentParser
 from movie_db_llm.database import configure_sqlite_connection, get_session
+from movie_db_llm.intent_contract import intent_messages
 from movie_db_llm.main import app
 from movie_db_llm.models import Base, Movie, MovieGenre
 from movie_db_llm.recommendations import (
@@ -115,7 +118,7 @@ def test_bounded_request_and_literal_years(
     requests: list[httpx.Request],
 ) -> None:
     replies.append(reply(intent_payload()))
-    result = BedrockIntentParser(aws_client).parse(
+    result = BedrockIntentParser(aws_client, "test-model").parse(
         "90s comedy movies with dog in the title", ["Comedy", "Drama"]
     )
     assert result.genres == ["Comedy"]
@@ -129,8 +132,9 @@ def test_bounded_request_and_literal_years(
         "https://bedrock-mantle.us-west-2.api.aws/v1/chat/completions"
     )
     body = json.loads(request.content)
-    assert body["model"] == "mistral.ministral-3-8b-instruct"
+    assert body["model"] == "test-model"
     assert body["max_completion_tokens"] == 1024
+    assert "reasoning_effort" not in body
     assert body["parallel_tool_calls"] is False
     assert body["tool_choice"] == {
         "type": "function",
@@ -143,7 +147,9 @@ def test_bounded_request_and_literal_years(
         turn for turn in body["messages"] if turn["role"] == "assistant"
     ]
     assert examples
-    for turn in examples:
+    for index, turn in enumerate(body["messages"]):
+        if turn["role"] != "assistant":
+            continue
         assert turn["content"] is None
         assert len(turn["tool_calls"]) == 1
         call = turn["tool_calls"][0]
@@ -151,11 +157,9 @@ def test_bounded_request_and_literal_years(
         assert call["id"].isascii() and call["id"].isalnum()
         assert call["type"] == "function"
         assert call["function"]["name"] == "movie_intent"
-        assert any(
-            following["role"] == "tool"
-            and following["tool_call_id"] == call["id"]
-            for following in body["messages"]
-        )
+        following = body["messages"][index + 1]
+        assert following["role"] == "tool"
+        assert following["tool_call_id"] == call["id"]
     assert body["messages"][-1] == {
         "role": "user",
         "content": "90s comedy movies with dog in the title",
@@ -267,6 +271,52 @@ def test_invalid_envelope_is_rejected(
     )
     with pytest.raises(InvalidModelResponseError):
         BedrockIntentParser(aws_client).parse("Comedies", ["Comedy"])
+
+
+@pytest.mark.parametrize("invalid_field", ["refusal", "function"])
+def test_independent_response_guards(
+    aws_client: httpx.Client, replies: Replies, invalid_field: str
+) -> None:
+    """A refusal or wrong function alone invalidates an otherwise valid call."""
+    payload = reply(intent_payload()).json()
+    message = payload["choices"][0]["message"]
+    if invalid_field == "refusal":
+        message["refusal"] = "No"
+    else:
+        message["tool_calls"][0]["function"]["name"] = "run_sql"
+    replies.append(httpx.Response(200, json=payload))
+    with pytest.raises(InvalidModelResponseError):
+        BedrockIntentParser(aws_client).parse("Comedies", ["Comedy"])
+
+
+@pytest.mark.parametrize("tool_call", [False, True])
+@pytest.mark.parametrize("genres", [[], ["Comedy"], ["Mystery", "Thriller"]])
+def test_emitted_examples_only_select_available_genres(
+    tool_call: bool, genres: list[str]
+) -> None:
+    """The generated model interface must obey its own catalog allowlist."""
+    examples: list[dict[str, object]] = []
+    for turn in intent_messages("Comedies", genres, tool_call=tool_call):
+        if turn["role"] != "assistant":
+            continue
+        if tool_call:
+            calls = cast(list[dict[str, object]], turn["tool_calls"])
+            function = cast(dict[str, object], calls[0]["function"])
+            raw = function["arguments"]
+        else:
+            raw = turn["content"]
+        assert isinstance(raw, str)
+        intent = cast(dict[str, object], json.loads(raw))
+        selected = cast(list[str], intent["genres"])
+        assert set(selected) <= set(genres)
+        examples.append(intent)
+    assert examples
+    assert any(item["unsupported_constraints"] for item in examples)
+    assert any(item["title_keywords"] == ["A_B%/"] for item in examples)
+    if set(genres) == {"Mystery", "Thriller"}:
+        assert any(
+            item["genres"] == ["Mystery", "Thriller"] for item in examples
+        )
 
 
 def test_oversized_context_makes_no_paid_request(
@@ -570,6 +620,7 @@ def test_live_check_reports_wrong_results_and_measured_usage(
 ) -> None:
     # The decade query must not silently acquire an unrelated title filter.
     replies.append(reply(intent_payload()))
+    monkeypatch.setattr(config, "BEDROCK_MODEL_ID", "evaluation-test-model")
     monkeypatch.setattr(bedrock, "bedrock_client", lambda: aws_client)
     assert live_check_main(monkeypatch)() == 1
     record = json.loads(capsys.readouterr().out)
@@ -579,15 +630,126 @@ def test_live_check_reports_wrong_results_and_measured_usage(
         "completion_tokens": 50,
         "total_tokens": 150,
     }
-    assert record["model"] == "mistral.ministral-3-8b-instruct"
+    assert record["model"] == "evaluation-test-model"
     assert record["latency_ms"] >= 0
     assert aws_client.event_hooks["response"] == []
 
 
-def test_live_check_requires_explicit_opt_in() -> None:
+@pytest.mark.parametrize("uri", [False, True])
+@pytest.mark.parametrize("catalog_state", ["missing", "schema-less", "empty"])
+def test_live_check_blocks_invalid_catalog_before_aws(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    catalog_state: str,
+    uri: bool,
+) -> None:
+    """Bad catalog setup must never create a file or start paid inference."""
+    database = tmp_path / "catalog.sqlite3"
+    if catalog_state != "missing":
+        engine = create_engine(f"sqlite:///{database}")
+        with engine.begin() as connection:
+            if catalog_state == "empty":
+                Base.metadata.create_all(connection)
+        engine.dispose()
+    before = database.read_bytes() if database.exists() else None
+    url = (
+        f"sqlite:///{database.as_uri()}?mode=rwc&uri=true"
+        if uri
+        else f"sqlite:///{database}"
+    )
+    monkeypatch.setattr(config, "DATABASE_URL", url)
+
+    def forbidden() -> httpx.Client:
+        pytest.fail("AWS client initialized before catalog validation")
+
+    monkeypatch.setattr(bedrock, "bedrock_client", forbidden)
+    main = live_check_main(monkeypatch)
+    monkeypatch.setattr(
+        sys, "argv", ["check_bedrock.py", "--live", "--catalog"]
+    )
+    assert main() == 1
+    assert json.loads(capsys.readouterr().out) == {
+        "status": "blocked",
+        "message": "Empty catalog."
+        if catalog_state == "empty"
+        else "Cannot read catalog.",
+    }
+    assert (database.read_bytes() if database.exists() else None) == before
+
+
+@pytest.mark.parametrize("uri", [False, True])
+def test_evaluator_catalog_connection_rejects_writes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, uri: bool
+) -> None:
+    """SQLite enforces read-only access even if a source URI requests writes."""
+    database = tmp_path / (
+        "catalog ?#%.sqlite3" if uri else "catalog #%.sqlite3"
+    )
+    engine = create_engine(URL.create("sqlite", database=str(database)))
+    with engine.begin() as connection:
+        connection.execute(text("CREATE TABLE example (id INTEGER)"))
+        connection.execute(text("INSERT INTO example VALUES (1)"))
+    engine.dispose()
+    before = database.read_bytes()
+    root = Path(__file__).resolve().parents[1]
+    open_catalog = cast(
+        Callable[[str], AbstractContextManager[Connection]],
+        runpy.run_path(str(root / "scripts/check_bedrock.py"))["open_catalog"],
+    )
+    url = (
+        f"sqlite:///{database.as_uri()}?mode=rwc&uri=true"
+        if uri
+        else f"sqlite:///{database}"
+    )
+    # The callable comes from the executable evaluation script, not a mock.
+    with open_catalog(url) as connection:
+        assert connection.scalar(text("SELECT id FROM example")) == 1
+        with pytest.raises(OperationalError):
+            connection.execute(text("INSERT INTO example VALUES (2)"))
+    assert database.read_bytes() == before
+
+
+def test_live_check_uses_catalog_vocabulary(
+    aws_client: httpx.Client,
+    replies: Replies,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "catalog.sqlite3"
+    engine = create_engine(f"sqlite:///{database}")
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        session.add(
+            Movie(
+                title="Example",
+                synopsis="A story",
+                genre_assignments=[MovieGenre(genre="Mystery")],
+            )
+        )
+        session.commit()
+    engine.dispose()
+    before = database.read_bytes()
+    monkeypatch.setattr(config, "DATABASE_URL", f"sqlite:///{database}")
+    monkeypatch.setattr(bedrock, "bedrock_client", lambda: aws_client)
+    replies.append(reply(intent_payload()))
+    main = live_check_main(monkeypatch)
+    monkeypatch.setattr(
+        sys, "argv", ["check_bedrock.py", "--live", "--catalog"]
+    )
+    assert main() == 1  # Deliberately wrong inference, not a catalog failure.
+    record = json.loads(capsys.readouterr().out)
+    assert record["status"] == "fail"
+    assert record["catalog_genres"] == 1
+    assert database.read_bytes() == before
+
+
+@pytest.mark.parametrize("arguments", [[], ["--catalog"]])
+def test_live_check_requires_explicit_opt_in(arguments: list[str]) -> None:
     root = Path(__file__).resolve().parents[1]
     result = subprocess.run(
-        [sys.executable, str(root / "scripts/check_bedrock.py")],
+        [sys.executable, str(root / "scripts/check_bedrock.py"), *arguments],
         cwd=root,
         capture_output=True,
         text=True,

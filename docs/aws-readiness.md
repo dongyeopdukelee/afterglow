@@ -91,6 +91,8 @@ bounded invocation to establish readiness. For example:
 
 ```sh
 AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
+AWS_SHARED_CREDENTIALS_FILE=/home/dukelee/.config/afterglow/aws/credentials \
+AWS_LOGIN_CACHE_DIRECTORY=/home/dukelee/.config/afterglow/aws/login-cache \
   aws --profile afterglow --region us-west-2 service-quotas get-service-quota \
     --service-code bedrock --quota-code L-DC7FF66C \
     --query 'Quota.{name:QuotaName,value:Value,scope:QuotaAppliedAtLevel}'
@@ -267,8 +269,12 @@ imported database. The script reads its distinct genre labels.
 
 ```sh
 AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
+AWS_SHARED_CREDENTIALS_FILE=/home/dukelee/.config/afterglow/aws/credentials \
+AWS_LOGIN_CACHE_DIRECTORY=/home/dukelee/.config/afterglow/aws/login-cache \
 AWS_PROFILE=afterglow AWS_REGION=us-west-2 \
   uv run python scripts/check_bedrock.py --live --catalog
 ```
 
 Omit `--catalog` to run the same cases with the fixed four-genre vocabulary.
+With `--catalog`, SQLite is opened read-only. A missing file, missing schema,
+or empty genre catalog produces a blocked result before AWS client setup.

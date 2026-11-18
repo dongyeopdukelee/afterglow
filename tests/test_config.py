@@ -13,14 +13,18 @@ import pytest
     ("region", "expected_region"),
     [(None, "us-west-2"), ("us-east-2", "us-east-2")],
 )
+@pytest.mark.parametrize("model", [None, "custom-test-model"])
 def test_aws_region_selects_client_endpoint(
-    region: str | None, expected_region: str, tmp_path: Path
+    region: str | None,
+    expected_region: str,
+    tmp_path: Path,
+    model: str | None,
 ) -> None:
     """New clients use Oregon by default and honor AWS_REGION overrides."""
     environment = {
         name: value
         for name, value in os.environ.items()
-        if not name.startswith("AWS_")
+        if not name.startswith("AWS_") and name != "BEDROCK_MODEL_ID"
     }
     environment.update(
         {
@@ -35,6 +39,8 @@ def test_aws_region_selects_client_endpoint(
     )
     if region is not None:
         environment["AWS_REGION"] = region
+    if model is not None:
+        environment["BEDROCK_MODEL_ID"] = model
 
     result = subprocess.run(
         [
@@ -42,8 +48,10 @@ def test_aws_region_selects_client_endpoint(
             "-c",
             "import json; "
             "from movie_db_llm.bedrock import bedrock_client; "
+            "from movie_db_llm.config import BEDROCK_MODEL_ID; "
             "client = bedrock_client(); "
-            "print(json.dumps({'endpoint': str(client.base_url)})); "
+            "print(json.dumps({'endpoint': str(client.base_url), "
+            "'model': BEDROCK_MODEL_ID})); "
             "client.close()",
         ],
         env=environment,
@@ -54,4 +62,5 @@ def test_aws_region_selects_client_endpoint(
 
     assert json.loads(result.stdout) == {
         "endpoint": f"https://bedrock-mantle.{expected_region}.api.aws/v1/",
+        "model": model or "mistral.ministral-3-8b-instruct",
     }

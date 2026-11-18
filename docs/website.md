@@ -150,11 +150,16 @@ Use that config to verify the assumed identity.
 
 ```sh
 AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
+AWS_SHARED_CREDENTIALS_FILE=/home/dukelee/.config/afterglow/aws/credentials \
+AWS_LOGIN_CACHE_DIRECTORY=/home/dukelee/.config/afterglow/aws/login-cache \
   aws --profile afterglow sts get-caller-identity
 ```
 
-The profile assumes the role for one hour. Its source credentials come from
-a `credential_process` that reads the project's private WSL login cache.
+The `afterglow` profile uses a `credential_process` that reads the project's
+private WSL `afterglow-source` login session, calls STS AssumeRole, and returns
+one-hour role credentials to its caller. It does not use `role_arn` /
+`source_profile` or the AWS CLI's standard on-disk assume-role cache.
+The separate `afterglow-source` profile uses `login_session`.
 When the browser-login session expires, refresh `afterglow-source` with
 the same config and cache.
 
@@ -183,6 +188,8 @@ expired session.
 
 ```sh
 export AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config
+export AWS_SHARED_CREDENTIALS_FILE=/home/dukelee/.config/afterglow/aws/credentials
+export AWS_LOGIN_CACHE_DIRECTORY=/home/dukelee/.config/afterglow/aws/login-cache
 export AWS_PROFILE=afterglow
 export AWS_REGION=us-west-2
 export INTENT_PROVIDER=bedrock

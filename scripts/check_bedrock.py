@@ -2,16 +2,21 @@
 
 import argparse
 import json
+from collections.abc import Generator
+from contextlib import contextmanager
+from pathlib import Path
 from time import perf_counter
+from urllib.parse import quote, urlencode
 
 import httpx
 from botocore.exceptions import BotoCoreError, ClientError
 from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import select
+from sqlalchemy import Connection, create_engine, make_url, select
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.pool import NullPool
 
 from movie_db_llm.bedrock import BedrockIntentParser, bedrock_client
-from movie_db_llm.config import AWS_REGION, BEDROCK_MODEL_ID
-from movie_db_llm.database import SessionLocal
+from movie_db_llm.config import AWS_REGION, BEDROCK_MODEL_ID, DATABASE_URL
 from movie_db_llm.models import MovieGenre
 from movie_db_llm.recommendations import (
     InvalidModelResponseError,
@@ -25,6 +30,46 @@ class Usage(BaseModel):
     prompt_tokens: int = Field(ge=0, strict=True)
     completion_tokens: int = Field(ge=0, strict=True)
     total_tokens: int = Field(ge=0, strict=True)
+
+
+@contextmanager
+def open_catalog(database_url: str) -> Generator[Connection]:
+    """Open an existing SQLite catalog without permitting writes or creation."""
+    url = make_url(database_url)
+    database = url.database
+    if (
+        url.drivername not in ("sqlite", "sqlite+pysqlite")
+        or not database
+        or database == ":memory:"
+    ):
+        raise ValueError("Expected a file-backed SQLite catalog.")
+    dialect = url.get_dialect()()
+    _, driver_options = dialect.create_connect_args(url)
+    uri_options: dict[str, str | tuple[str, ...]] = {}
+    if database.startswith("file:") and driver_options.get("uri"):
+        database = database.partition("#")[0]
+        if (
+            database in ("file:", "file::memory:")
+            or url.query.get("mode") == "memory"
+        ):
+            raise ValueError("Expected a file-backed SQLite catalog.")
+        uri_options = dict(url.difference_update_query(driver_options).query)
+    else:
+        database = Path(database).absolute().as_uri()
+    uri_options["mode"] = "ro"
+    query = urlencode(uri_options, doseq=True, quote_via=quote)
+    readonly_url = url.set(
+        database=f"{database}?{query}", query={"uri": "true"}
+    )
+    driver_options["uri"] = True
+    engine = create_engine(
+        readonly_url, connect_args=driver_options, poolclass=NullPool
+    )
+    try:
+        with engine.connect() as connection:
+            yield connection
+    finally:
+        engine.dispose()
 
 
 def main() -> int:
@@ -41,9 +86,32 @@ def main() -> int:
         help="Use all genres in the configured catalog (read-only).",
     )
     arguments = parser.parse_args()
+    genres = ["Comedy", "Drama", "Horror", "Thriller"]
+    if arguments.catalog:
+        try:
+            with open_catalog(DATABASE_URL) as connection:
+                genres = list(
+                    connection.scalars(
+                        select(MovieGenre.genre)
+                        .distinct()
+                        .order_by(MovieGenre.genre)
+                    )
+                )
+        except SQLAlchemyError, ValueError:
+            print(
+                json.dumps(
+                    {"status": "blocked", "message": "Cannot read catalog."}
+                )
+            )
+            return 1
+        if not genres:
+            print(
+                json.dumps({"status": "blocked", "message": "Empty catalog."})
+            )
+            return 1
     try:
         client = bedrock_client()
-        model = BedrockIntentParser(client)
+        model = BedrockIntentParser(client, BEDROCK_MODEL_ID)
     except BotoCoreError, ClientError:
         print(
             json.dumps(
@@ -54,21 +122,6 @@ def main() -> int:
             )
         )
         return 1
-    genres = ["Comedy", "Drama", "Horror", "Thriller"]
-    if arguments.catalog:
-        with SessionLocal() as session:
-            genres = list(
-                session.scalars(
-                    select(MovieGenre.genre)
-                    .distinct()
-                    .order_by(MovieGenre.genre)
-                )
-            )
-        if not genres:
-            print(
-                json.dumps({"status": "blocked", "message": "Empty catalog."})
-            )
-            return 1
     cases: list[tuple[str, dict[str, object] | None]] = [
         (
             "Comedies from the 1990s",

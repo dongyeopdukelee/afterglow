@@ -128,6 +128,8 @@ use the WSL-only [deployment profile](website.md#deployment-administrator-profil
 
 ```sh
 AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
+AWS_SHARED_CREDENTIALS_FILE=/home/dukelee/.config/afterglow/aws/credentials \
+AWS_LOGIN_CACHE_DIRECTORY=/home/dukelee/.config/afterglow/aws/login-cache \
 AWS_PROFILE=afterglow \
   python3 scripts/import_posters.py --bucket "$POSTER_BUCKET" --region us-west-2
 ```
