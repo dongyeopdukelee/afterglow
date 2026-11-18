@@ -129,7 +129,7 @@ def test_bounded_request_and_literal_years(
         "https://bedrock-mantle.us-west-2.api.aws/v1/chat/completions"
     )
     body = json.loads(request.content)
-    assert body["model"] == "openai.gpt-oss-20b"
+    assert body["model"] == "mistral.ministral-3-8b-instruct"
     assert body["max_completion_tokens"] == 1024
     assert body["parallel_tool_calls"] is False
     assert body["tool_choice"] == {
@@ -137,6 +137,25 @@ def test_bounded_request_and_literal_years(
         "function": {"name": "movie_intent"},
     }
     assert body["tools"][0]["function"]["strict"] is True
+    # The emitted model interface must not demonstrate plain-text responses
+    # while requiring a function call. Live evaluation verifies interpretation.
+    examples = [
+        turn for turn in body["messages"] if turn["role"] == "assistant"
+    ]
+    assert examples
+    for turn in examples:
+        assert turn["content"] is None
+        assert len(turn["tool_calls"]) == 1
+        call = turn["tool_calls"][0]
+        assert len(call["id"]) == 9
+        assert call["id"].isascii() and call["id"].isalnum()
+        assert call["type"] == "function"
+        assert call["function"]["name"] == "movie_intent"
+        assert any(
+            following["role"] == "tool"
+            and following["tool_call_id"] == call["id"]
+            for following in body["messages"]
+        )
     assert body["messages"][-1] == {
         "role": "user",
         "content": "90s comedy movies with dog in the title",
@@ -560,7 +579,7 @@ def test_live_check_reports_wrong_results_and_measured_usage(
         "completion_tokens": 50,
         "total_tokens": 150,
     }
-    assert record["model"] == "openai.gpt-oss-20b"
+    assert record["model"] == "mistral.ministral-3-8b-instruct"
     assert record["latency_ms"] >= 0
     assert aws_client.event_hooks["response"] == []
 

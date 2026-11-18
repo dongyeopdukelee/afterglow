@@ -8,4 +8,6 @@ OLLAMA_MODEL = environ.get("OLLAMA_MODEL", "qwen3.5:2b")
 OLLAMA_TIMEOUT_SECONDS = float(environ.get("OLLAMA_TIMEOUT_SECONDS", "120"))
 INTENT_PROVIDER = environ.get("INTENT_PROVIDER", "ollama")
 AWS_REGION = environ.get("AWS_REGION", "us-west-2")
-BEDROCK_MODEL_ID = environ.get("BEDROCK_MODEL_ID", "openai.gpt-oss-20b")
+BEDROCK_MODEL_ID = environ.get(
+    "BEDROCK_MODEL_ID", "mistral.ministral-3-8b-instruct"
+)

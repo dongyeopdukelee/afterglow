@@ -1,12 +1,53 @@
 # AWS readiness
 
-Checked on 2026-11-15 UTC in `us-east-1` and `us-west-2`. These are observations,
+Latest live check: 2026-11-18 UTC in `us-west-2`, with historical observations
+from 2026-11-15 in `us-east-1` and `us-west-2`. These are observations,
 not a claim that public deployment or live model-quality validation is complete.
 
 The WSL `afterglow` / `afterglow-source` profiles and new WSL zsh sessions
 were configured for Oregon. See [inference configuration](../README.md#inference-configuration)
 for application defaults and overrides. This setting does not move existing
 resources or resolve the historical runtime throttling below.
+
+## Latest live validation: structured intent passes
+
+The owner's refreshed default login was valid for the expected account, but
+the project's separate WSL login cache had expired. Reusing that matching
+session in the private WSL cache restored the existing `afterglow` role;
+no Windows files, IAM policies or account settings were changed. Use the
+[explicit project login command](website.md#deployment-administrator-profile)
+to avoid refreshing a different profile/cache next time.
+
+The default hosted model passed all ten original live acceptance cases
+with the real catalog's 363 distinct genre labels. The tested model was
+`mistral.ministral-3-8b-instruct`; current defaults are in
+[inference configuration](../README.md#inference-configuration). The check
+covers decades, all five year comparisons, exact title punctuation,
+unsupported plot/OR constraints and an unconstrained greeting.
+
+The adapter previously mixed a forced function request with plain-JSON
+assistant demonstrations. Live replies exposed text-only answers and invalid
+field types, which strict validation correctly rejected. Hosted examples now
+demonstrate function calls and tool acknowledgements, with explicit numeric
+year and no-constraint instructions. Ollama retains its original JSON protocol.
+GPT-OSS and Ministral 3B were not accepted after live format/semantic failures.
+No expected results were relaxed and no provider fallback was introduced.
+
+One passing ten-request batch reported 34,127 input tokens and 489 completion
+tokens. Parser-call latency was 287–1,250 ms, median 390 ms, including
+credential resolution and the network. This is a small development sample,
+not an SLA, a general accuracy guarantee, or total session spend. Other
+diagnostic calls are not included in those counts. CI makes no paid calls.
+
+Real HTTP requests through Vite, Uvicorn, Bedrock and the imported SQLite
+catalog also passed: 1990s comedies, post-2000 thrillers and literal `dog`
+title searches returned ten matching cards each. Full synopses loaded from
+the detail endpoint. Plot, OR and greeting requests returned 422 without
+movie cards. These are API/proxy smoke checks, not a public deployment or a
+complete browser/model evaluation.
+
+Semantic retrieval, embeddings, spending allowances and public hosting are
+still separate release gates; this result does not establish them as ready.
 
 ## Working inference route: Bedrock Mantle
 
@@ -30,9 +71,9 @@ and the separate APIs and quota systems in its
 The future runtime action is `bedrock-mantle:CreateInference`; the local
 administrator role is not the future Lambda execution role.
 
-These basic probes establish connectivity, not recommendation quality.
-Full live intent acceptance remains pending: the saved browser-login session
-expired, and the owner is completing the approved WSL-only login. See the
+These earlier basic probes established connectivity, not recommendation
+quality. At that point live acceptance was pending an expired browser login;
+the later result is recorded above. See the
 [bounded live check](#repeat-the-bounded-live-parsing-check) for evaluation
 coverage and measurements. Titan embeddings remain separately unverified.
 No public paid-inference endpoint or hosting infrastructure has been provisioned.

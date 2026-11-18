@@ -101,7 +101,7 @@ class BedrockIntentParser:
 
     def parse(self, query: str, genres: list[str]) -> MovieIntent:
         """Force one structured result and reject truncated/malformed output."""
-        messages = intent_messages(query, genres)
+        messages = intent_messages(query, genres, tool_call=True)
         if len(json.dumps(messages).encode("utf-8")) > MAX_INPUT_BYTES:
             raise ModelUnavailableError("Search context exceeds its limit.")
         try:

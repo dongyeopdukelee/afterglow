@@ -163,7 +163,21 @@ AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
 The profile obtains one-hour role credentials from the owner's browser-login
 session. When that source session expires, authenticate `afterglow-source`
 again using the same config and the WSL login cache directory
-`/home/dukelee/.config/afterglow/aws/login-cache`. The role's administrator
+`/home/dukelee/.config/afterglow/aws/login-cache`:
+
+```sh
+AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
+AWS_SHARED_CREDENTIALS_FILE=/home/dukelee/.config/afterglow/aws/credentials \
+AWS_LOGIN_CACHE_DIRECTORY=/home/dukelee/.config/afterglow/aws/login-cache \
+  aws login --profile afterglow-source
+```
+
+An unqualified `aws login` refreshes the default profile/cache, not necessarily
+this project session. On this host the default `.aws` path points to Windows;
+the explicit paths above keep project authentication inside WSL. Never copy
+tokens into this repository, logs or chat.
+
+The role's administrator
 permissions are for deployment tooling only; do not assign it to the website
 or API runtime. No hosting resources have been provisioned by this role setup.
 
@@ -184,6 +198,9 @@ through the regional `/v1` route, at most 1,024 completion tokens (including
 reasoning), a bounded input context, and no automatic paid retries. It requires
 exactly one `movie_intent` function call and rejects truncated output, refusals,
 wrong function names and invalid arguments.
+Hosted examples use assistant function calls with corresponding tool replies,
+not Ollama's plain-JSON assistant replies. The underlying extraction rules and
+application-owned year semantics remain shared.
 Credentials refresh through the normal AWS credential chain; Lambda will use
 its execution role, not the local administrator profile. No API key is needed.
 Catalog browsing, movie details and health remain available when inference fails.
