@@ -47,12 +47,12 @@ and separate from disposable test databases. For later schema changes, apply
 the migrations to this database before restarting its API.
 
 Start the servers in two terminals from the root of the persistent worktree.
-The WSL preview uses Bedrock for recommendations. To reproduce it, first set
-the [hosted provider variables](#hosted-intent-parsing-not-yet-deployed) in
-the API terminal. For the default local provider, start Ollama separately.
+For the WSL Bedrock preview, use the
+[hosted API command](#hosted-intent-parsing-not-yet-deployed).
+For local inference, start Ollama and run the API with this command.
 
 ```sh
-DATABASE_URL="sqlite:///$(pwd)/.tools/preview/catalog.sqlite3" \
+INTENT_PROVIDER=ollama DATABASE_URL="sqlite:///$PWD/.tools/preview/catalog.sqlite3" \
   uv run uvicorn movie_db_llm.main:app --host 127.0.0.1 --port 8001 --reload
 ```
 
@@ -71,9 +71,11 @@ For an independent UI redesign preview, run the other checkout's API on 8002
 and Vite on 5175. From the persistent worktree, run
 `export PREVIEW_CATALOG="$PWD/.tools/preview/catalog.sqlite3"` before switching
 the shell to the redesign checkout. Its API opens the same catalog read-only.
+For Bedrock, substitute the read-only URL below and port 8002 in the
+[hosted API command](#hosted-intent-parsing-not-yet-deployed).
 
 ```sh
-DATABASE_URL="sqlite:///file:$PREVIEW_CATALOG?mode=ro&uri=true" \
+INTENT_PROVIDER=ollama DATABASE_URL="sqlite:///file:$PREVIEW_CATALOG?mode=ro&uri=true" \
   uv run uvicorn movie_db_llm.main:app --host 127.0.0.1 --port 8002 --reload
 ```
 
@@ -146,7 +148,13 @@ registration/renewal quote within the [selected budget](decisions.md#product-sco
 The owner-authorized `afterglow` IAM role uses temporary sessions,
 not permanent access keys. On the current WSL host, its private CLI config is
 `/home/dukelee/.config/afterglow/aws/config`; the profile is `afterglow`.
-Use that config to verify the assumed identity.
+Exported access keys can take precedence over a profile selected through
+`AWS_PROFILE`. The CLI examples select the profile with `--profile`. The
+application and importer commands use `env -u` to clear inherited profile,
+key, web identity, and container credential overrides for the launched process.
+[AWS credential precedence](https://docs.aws.amazon.com/cli/latest/topic/config-vars.html#credentials)
+
+Verify the assumed identity with the private config.
 
 ```sh
 AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
@@ -181,18 +189,23 @@ or API runtime. No hosting resources have been provisioned by this role setup.
 
 ### Hosted intent parsing (not yet deployed)
 
-The local preview makes paid Bedrock calls for recommendations. To select
-Bedrock, set these variables in the API terminal before starting Uvicorn.
-Use the [project login](#deployment-administrator-profile) to refresh an
-expired session.
+The local preview makes paid Bedrock calls for recommendations. Run this
+command from the persistent worktree to start Uvicorn on port 8001 with the
+prepared preview catalog. Refresh an expired session with the
+[project login](#deployment-administrator-profile).
 
 ```sh
-export AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config
-export AWS_SHARED_CREDENTIALS_FILE=/home/dukelee/.config/afterglow/aws/credentials
-export AWS_LOGIN_CACHE_DIRECTORY=/home/dukelee/.config/afterglow/aws/login-cache
-export AWS_PROFILE=afterglow
-export AWS_REGION=us-west-2
-export INTENT_PROVIDER=bedrock
+env -u AWS_DEFAULT_PROFILE -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY \
+  -u AWS_SESSION_TOKEN -u AWS_SECURITY_TOKEN -u AWS_WEB_IDENTITY_TOKEN_FILE \
+  -u AWS_ROLE_ARN -u AWS_ROLE_SESSION_NAME \
+  -u AWS_CONTAINER_CREDENTIALS_RELATIVE_URI -u AWS_CONTAINER_CREDENTIALS_FULL_URI \
+  -u AWS_CONTAINER_AUTHORIZATION_TOKEN -u AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE \
+  AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
+  AWS_SHARED_CREDENTIALS_FILE=/home/dukelee/.config/afterglow/aws/credentials \
+  AWS_LOGIN_CACHE_DIRECTORY=/home/dukelee/.config/afterglow/aws/login-cache \
+  AWS_PROFILE=afterglow AWS_REGION=us-west-2 INTENT_PROVIDER=bedrock \
+  DATABASE_URL="sqlite:///$PWD/.tools/preview/catalog.sqlite3" \
+  uv run uvicorn movie_db_llm.main:app --host 127.0.0.1 --port 8001 --reload
 ```
 
 See [inference configuration](../README.md#inference-configuration) for provider

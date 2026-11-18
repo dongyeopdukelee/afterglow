@@ -576,6 +576,54 @@ def run_live_check(monkeypatch: pytest.MonkeyPatch, *arguments: str) -> int:
     return main()
 
 
+@pytest.mark.parametrize("stage", ["lookup", "refresh"])
+@pytest.mark.parametrize(
+    "error",
+    [
+        FileNotFoundError("private credential helper path"),
+        json.JSONDecodeError("private helper output", "malformed JSON", 0),
+        UnicodeDecodeError("utf-8", b"\xff", 0, 1, "private helper output"),
+    ],
+)
+def test_credential_process_failure_is_sanitized(
+    hosted_api: httpx.Client,
+    aws_client: httpx.Client,
+    requests: list[httpx.Request],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    stage: str,
+    error: Exception,
+) -> None:
+    session = Mock(spec=boto3.Session)
+    if stage == "lookup":
+        session.get_credentials.side_effect = error
+    else:
+        credentials = Mock(spec=Credentials)
+        credentials.get_frozen_credentials.side_effect = error
+        session.get_credentials.return_value = credentials
+    aws_client.auth = BedrockAuth(cast(boto3.Session, session), "us-west-2")
+    monkeypatch.setattr(bedrock, "bedrock_client", lambda: aws_client)
+
+    with pytest.raises(ModelUnavailableError) as caught:
+        BedrockIntentParser(aws_client).parse("Comedies", ["Comedy"])
+    assert caught.value.__cause__ is error
+
+    message = "Hosted search is temporarily unavailable."
+    response = hosted_api.post("/recommendations", json={"query": "Comedies"})
+    assert response.status_code == 503
+    assert response.json() == {"detail": message}
+    assert hosted_api.get("/movies").status_code == 200
+    assert run_live_check(monkeypatch) == 1
+    output = capsys.readouterr()
+    assert json.loads(output.out) == {
+        "query": "Comedies from the 1990s",
+        "status": "blocked",
+        "message": message,
+    }
+    assert output.err == ""
+    assert requests == []
+
+
 @pytest.mark.parametrize("region", ["us-west-2:443", "", "us-west-2\n"])
 def test_invalid_region_blocks_hosted_setup(
     hosted_api: httpx.Client,
@@ -632,9 +680,21 @@ def test_live_check_service_failure_stops_without_leaking_details(
     )
 
 
+def assert_evaluator_request(
+    requests: list[httpx.Request], model: str, genres: list[str]
+) -> None:
+    (request,) = requests
+    body = json.loads(request.content)
+    assert body["model"] == model
+    system = body["messages"][0]
+    assert system["role"] == "system"
+    assert json.loads(system["content"].splitlines()[-1]) == genres
+
+
 def test_live_check_reports_wrong_results_and_measured_usage(
     aws_client: httpx.Client,
     replies: Replies,
+    requests: list[httpx.Request],
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -644,6 +704,11 @@ def test_live_check_reports_wrong_results_and_measured_usage(
     monkeypatch.setattr(config, "DATABASE_URL", "invalid-database-url")
     monkeypatch.setattr(bedrock, "bedrock_client", lambda: aws_client)
     assert run_live_check(monkeypatch) == 1
+    assert_evaluator_request(
+        requests,
+        "evaluation-test-model",
+        ["Comedy", "Drama", "Horror", "Thriller"],
+    )
     record = json.loads(capsys.readouterr().out)
     assert record["status"] == "fail"
     assert record["usage"] == {
@@ -735,14 +800,13 @@ def create_evaluation_catalog(
     engine = create_engine(f"sqlite:///{database}")
     Base.metadata.create_all(engine)
     with Session(engine) as session:
-        session.add(
+        session.add_all(
             Movie(
                 title="Example",
                 synopsis="A story",
-                genre_assignments=[
-                    MovieGenre(genre=genre) for genre in genres
-                ],
+                genre_assignments=[MovieGenre(genre=genre)],
             )
+            for genre in genres
         )
         session.commit()
     engine.dispose()
@@ -782,6 +846,7 @@ def test_live_check_blocks_catalog_missing_a_benchmark_genre(
 def test_live_check_uses_catalog_vocabulary(
     aws_client: httpx.Client,
     replies: Replies,
+    requests: list[httpx.Request],
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
@@ -789,14 +854,21 @@ def test_live_check_uses_catalog_vocabulary(
     database = create_evaluation_catalog(
         tmp_path,
         monkeypatch,
-        ["Comedy", "Horror", "Mystery", "Thriller", "Western"],
+        ["Western", "Horror", "Thriller", "Comedy", "Mystery", "Horror"],
     )
     before = database.read_bytes()
+    monkeypatch.setattr(config, "BEDROCK_MODEL_ID", "catalog-test-model")
     monkeypatch.setattr(bedrock, "bedrock_client", lambda: aws_client)
     replies.append(reply(intent_payload()))
     assert run_live_check(monkeypatch, "--catalog") == 1
+    assert_evaluator_request(
+        requests,
+        "catalog-test-model",
+        ["Comedy", "Horror", "Mystery", "Thriller", "Western"],
+    )
     record = json.loads(capsys.readouterr().out)
     assert record["status"] == "fail"
+    assert record["model"] == "catalog-test-model"
     assert record["catalog_genres"] == 5
     assert database.read_bytes() == before
 

@@ -28,6 +28,7 @@ from movie_db_llm.recommendations import (
 
 MAX_INPUT_BYTES = 60_000
 MAX_OUTPUT_TOKENS = 1024
+_UNAVAILABLE_MESSAGE = "Hosted search is temporarily unavailable."
 
 
 class BedrockAuth(httpx.Auth):
@@ -42,18 +43,20 @@ class BedrockAuth(httpx.Auth):
     def auth_flow(
         self, request: httpx.Request
     ) -> Generator[httpx.Request, httpx.Response]:
-        credentials = self.session.get_credentials()
-        if credentials is None:
-            raise NoCredentialsError()
+        try:
+            credentials = self.session.get_credentials()
+            if credentials is None:
+                raise NoCredentialsError()
+            frozen = credentials.get_frozen_credentials()
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ModelUnavailableError(_UNAVAILABLE_MESSAGE) from error
         signed = AWSRequest(
             method=request.method,
             url=str(request.url),
             data=request.content,
             headers=dict(request.headers),
         )
-        SigV4Auth(
-            credentials.get_frozen_credentials(), "bedrock-mantle", self.region
-        ).add_auth(signed)
+        SigV4Auth(frozen, "bedrock-mantle", self.region).add_auth(signed)
         request.headers.update(dict(signed.headers))
         yield request
 
@@ -140,9 +143,7 @@ class BedrockIntentParser:
             )
             response.raise_for_status()
         except (httpx.HTTPError, BotoCoreError, ClientError) as error:
-            raise ModelUnavailableError(
-                "Hosted search is temporarily unavailable."
-            ) from error
+            raise ModelUnavailableError(_UNAVAILABLE_MESSAGE) from error
         try:
             envelope = _Response.model_validate_json(response.content)
             arguments = (

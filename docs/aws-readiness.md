@@ -265,13 +265,19 @@ reasoning tokens in completion usage. Missing usage is reported as null, not
 estimated. It is not an evaluation of semantic search.
 
 To repeat the catalog-backed run, set `DATABASE_URL` to the migrated,
-imported database. The script reads its distinct genre labels.
+imported database. The command reads its distinct genre labels and uses the
+[private WSL profile](website.md#deployment-administrator-profile).
 
 ```sh
-AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
-AWS_SHARED_CREDENTIALS_FILE=/home/dukelee/.config/afterglow/aws/credentials \
-AWS_LOGIN_CACHE_DIRECTORY=/home/dukelee/.config/afterglow/aws/login-cache \
-AWS_PROFILE=afterglow AWS_REGION=us-west-2 \
+env -u AWS_DEFAULT_PROFILE -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY \
+  -u AWS_SESSION_TOKEN -u AWS_SECURITY_TOKEN -u AWS_WEB_IDENTITY_TOKEN_FILE \
+  -u AWS_ROLE_ARN -u AWS_ROLE_SESSION_NAME \
+  -u AWS_CONTAINER_CREDENTIALS_RELATIVE_URI -u AWS_CONTAINER_CREDENTIALS_FULL_URI \
+  -u AWS_CONTAINER_AUTHORIZATION_TOKEN -u AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE \
+  AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
+  AWS_SHARED_CREDENTIALS_FILE=/home/dukelee/.config/afterglow/aws/credentials \
+  AWS_LOGIN_CACHE_DIRECTORY=/home/dukelee/.config/afterglow/aws/login-cache \
+  AWS_PROFILE=afterglow AWS_REGION=us-west-2 \
   uv run python scripts/check_bedrock.py --live --catalog
 ```
 
