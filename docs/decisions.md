@@ -75,18 +75,24 @@ when a decision is made, changed, or removed.
   See [catalog-wide acquisition](posters.md#catalog-wide-acquisition) for
   matching safeguards, checkpoint reconciliation, credential handling, and
   the attribution required before displaying TMDB images.
-- New AWS resources and configuration defaults use `us-west-2` (Oregon).
-  Previously recorded `us-east-1` readiness observations remain historical;
-  this change does not migrate existing resources.
+- New AWS resources and configuration default to `us-west-2` (Oregon).
+  An explicit region selection or a service-specific endpoint takes precedence.
+  Existing resources stay in their original regions.
 - The public demo targets about 720 recommendation requests/month and a
   $10/month recurring budget, excluding up to $20/year upfront for a custom
   domain. The exact domain and registrar quote remain unselected.
-- Production inference will use on-demand Amazon Bedrock; local development
-  retains Ollama. Models will be selected after accuracy and token-cost checks.
-- Hosted intent extraction uses the Bedrock Converse API with validated tool
-  output, shared application-owned year semantics, bounded input/output, and
-  no silent fallback to another provider. Nova Micro is the current candidate;
-  live model-quality validation remains required before public deployment.
+- Production inference will use on-demand Amazon Bedrock. Model selection for
+  public deployment requires accuracy and token-cost checks.
+- Select hosted inference from existing account quotas; quota-increase requests
+  are out of scope for the current deployment phase. A positive quota listing
+  does not replace successful live invocation and quality checks.
+- Hosted intent extraction uses Bedrock Mantle Chat Completions, signed using
+  temporary IAM credentials. See [inference configuration](../README.md#inference-configuration)
+  for the current model and regional defaults.
+  It requires validated tool output, shared application-owned year semantics,
+  bounded input/output, and no silent fallback to another provider.
+  The [AWS readiness record](aws-readiness.md) tracks live results and the
+  remaining checks for public deployment.
 - The website will remain online when a conservative usage quota pauses
   recommendation searches. Budget alerts alone are not a spending cap.
 - Deployment will use the owner's existing AWS account without assuming signup

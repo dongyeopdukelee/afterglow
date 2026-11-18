@@ -74,18 +74,26 @@ resolved IDs.
 After correcting source identities or mappings, `--retry-review` can retry
 records whose conflicts have been resolved.
 
-Upload completed files to the existing private bucket using the WSL-only
-deployment profile described below. Sync is additive; do not use `--delete`:
+Upload completed files to the existing private bucket using the
+[WSL deployment profile](website.md#deployment-administrator-profile).
+The subshell scopes the settings to these three uploads. Keep `--delete`
+out of the sync command to preserve previously uploaded images.
 
 ```sh
-aws s3 sync .tools/tmdb-posters/images/ "s3://$POSTER_BUCKET/posters/" \
-  --region us-west-2 --sse AES256 --only-show-errors
-aws s3 cp .tools/tmdb-posters/manifest.json \
-  "s3://$POSTER_BUCKET/batches/tmdb/manifest.json" \
-  --region us-west-2 --sse AES256
-aws s3 cp .tools/tmdb-posters/coverage.json \
-  "s3://$POSTER_BUCKET/batches/tmdb/coverage.json" \
-  --region us-west-2 --sse AES256
+(
+  export AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config
+  export AWS_SHARED_CREDENTIALS_FILE=/home/dukelee/.config/afterglow/aws/credentials
+  export AWS_LOGIN_CACHE_DIRECTORY=/home/dukelee/.config/afterglow/aws/login-cache
+  export AWS_PROFILE=afterglow
+  export AWS_REGION=us-west-2
+
+  aws --profile afterglow s3 sync .tools/tmdb-posters/images/ \
+    "s3://$POSTER_BUCKET/posters/" --sse AES256 --only-show-errors
+  aws --profile afterglow s3 cp .tools/tmdb-posters/manifest.json \
+    "s3://$POSTER_BUCKET/batches/tmdb/manifest.json" --sse AES256
+  aws --profile afterglow s3 cp .tools/tmdb-posters/coverage.json \
+    "s3://$POSTER_BUCKET/batches/tmdb/coverage.json" --sse AES256
+)
 ```
 
 These operational files and downloaded bulk assets are ignored by Git; the
@@ -127,8 +135,15 @@ an object public. To upload the images to an existing private project bucket,
 use the WSL-only [deployment profile](website.md#deployment-administrator-profile):
 
 ```sh
-AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
-AWS_PROFILE=afterglow \
+env -u AWS_DEFAULT_PROFILE -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY \
+  -u AWS_SESSION_TOKEN -u AWS_SECURITY_TOKEN -u AWS_WEB_IDENTITY_TOKEN_FILE \
+  -u AWS_ROLE_ARN -u AWS_ROLE_SESSION_NAME \
+  -u AWS_CONTAINER_CREDENTIALS_RELATIVE_URI -u AWS_CONTAINER_CREDENTIALS_FULL_URI \
+  -u AWS_CONTAINER_AUTHORIZATION_TOKEN -u AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE \
+  AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
+  AWS_SHARED_CREDENTIALS_FILE=/home/dukelee/.config/afterglow/aws/credentials \
+  AWS_LOGIN_CACHE_DIRECTORY=/home/dukelee/.config/afterglow/aws/login-cache \
+  AWS_PROFILE=afterglow AWS_REGION=us-west-2 \
   python3 scripts/import_posters.py --bucket "$POSTER_BUCKET" --region us-west-2
 ```
 

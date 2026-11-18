@@ -1,12 +1,9 @@
 # Afterglow website
 
-This first website slice runs locally against the existing FastAPI catalog.
-It is not a public AWS deployment. An optional Bedrock parsing adapter is
-implemented, with live validation still pending; see
+The website runs locally against the FastAPI catalog and supports genre,
+year and title filters. For live Bedrock parsing results and the remaining
+semantic search, spending and public hosting checks, see
 [AWS readiness](aws-readiness.md).
-Semantic indexing/search, usage quotas and public hosting infrastructure remain
-subsequent work; the UI describes only the currently supported genre, year,
-and title filters.
 
 See the [product decisions](decisions.md#product-scope) for the visual direction.
 The first keyboard stop lets visitors skip to the films. The header keeps
@@ -32,9 +29,8 @@ sources and notices are in `frontend/public/fonts/README.md`.
 
 Keep the interactive website on <http://localhost:5174> and its API on
 <http://localhost:8001>, leaving ports 5173 and 8000 free for browser tests.
-The Vite development server updates the open page when frontend files change;
-Uvicorn's reload mode restarts the API when Python files change. This is a
-development preview, not a production server or a mock of hosted inference.
+Both servers listen only on loopback. Vite updates the open page when frontend
+files change, and Uvicorn restarts the API when Python files change.
 
 From the repository root, prepare a separate local preview catalog once:
 
@@ -50,10 +46,13 @@ The ignored `.tools/preview` directory keeps the real CMU snapshot persistent
 and separate from disposable test databases. For later schema changes, apply
 the migrations to this database before restarting its API.
 
-Start these in two terminals from the repository root:
+Start the servers in two terminals from the root of the persistent worktree.
+For the WSL Bedrock preview, use the
+[hosted API command](#hosted-intent-parsing-not-yet-deployed).
+For local inference, start Ollama and run the API with this command.
 
 ```sh
-DATABASE_URL="sqlite:///$(pwd)/.tools/preview/catalog.sqlite3" \
+INTENT_PROVIDER=ollama DATABASE_URL="sqlite:///$PWD/.tools/preview/catalog.sqlite3" \
   uv run uvicorn movie_db_llm.main:app --host 127.0.0.1 --port 8001 --reload
 ```
 
@@ -64,16 +63,19 @@ AFTERGLOW_API_PROXY=http://127.0.0.1:8001 \
 ```
 
 `AFTERGLOW_API_PROXY` configures only Vite's development proxy; browser requests
-remain same-origin. Restart Vite if changing this setting. Local searches
-still require Ollama with `qwen3.5:2b`; browsing and synopses do not.
+remain same-origin. Restart Vite if changing this setting. Recommendation
+searches use the [configured inference provider](../README.md#inference-configuration);
+browsing and synopses do not require inference.
 
-For an independent UI redesign preview from another checkout, run that
-checkout's API on 8002 and Vite on 5175. The original preview on 5174 keeps
-its API on 8001. On this host, the redesign API reads the same CMU snapshot
-without modifying it:
+For an independent UI redesign preview, run the other checkout's API on 8002
+and Vite on 5175. From the persistent worktree, run
+`export PREVIEW_CATALOG="$PWD/.tools/preview/catalog.sqlite3"` before switching
+the shell to the redesign checkout. Its API opens the same catalog read-only.
+For Bedrock, substitute the read-only URL below and port 8002 in the
+[hosted API command](#hosted-intent-parsing-not-yet-deployed).
 
 ```sh
-DATABASE_URL='sqlite:///file:/tmp/afterglow-website/.tools/preview/catalog.sqlite3?mode=ro&uri=true' \
+INTENT_PROVIDER=ollama DATABASE_URL="sqlite:///file:$PREVIEW_CATALOG?mode=ro&uri=true" \
   uv run uvicorn movie_db_llm.main:app --host 127.0.0.1 --port 8002 --reload
 ```
 
@@ -86,14 +88,11 @@ AFTERGLOW_API_PROXY=http://127.0.0.1:8002 \
 This keeps the original website on 5174 available for comparison. Vite updates
 the redesign browser tab as frontend source changes; keep its process running.
 
-On the current WSL host, the original preview and API run in the `afterglow-dev`
-tmux window from `/tmp/afterglow-website`. A third pane runs the existing local
-Ollama installation and model cache, without paid API calls or model downloads.
-Closing the browser or detaching tmux does not
-stop them; stopping WSL or rebooting does. To view logs, select that window
-with `tmux select-window -t main:afterglow-dev`. To stop the preview, press
-Ctrl+C in each server pane. Do not use broad process-kill commands that would
-also stop tests or other projects.
+The preview runs in the `afterglow-dev` tmux window. Its servers keep running
+when the browser closes or tmux detaches. Stopping WSL or rebooting stops
+them. View logs with `tmux select-window -t main:afterglow-dev`. To stop the
+preview, press Ctrl+C in each server pane. Do not use broad process-kill
+commands that would also stop tests or other projects.
 
 The build is static (`npm run build`, output `frontend/dist`). Calls are
 same-origin. A future CloudFront deployment must route `/movies`, `/movies/*`
@@ -135,14 +134,13 @@ both the close button and Escape while preserving focus on the invoking card.
 
 - AWS CLI and an authenticated AWS profile in the intended account/region.
   Do not paste AWS secrets into chat or commit them to this repository.
-- Measured Bedrock model quality/token costs and vector-store filter
-  compatibility, as required by the [deployment decisions](decisions.md#product-scope).
 - Server-enforced usage limits before exposing paid anonymous inference;
   a 429 display is not itself a quota implementation. Follow the availability
   and spending constraints in the [product decisions](decisions.md#product-scope).
 
 Follow the [release gates](aws-readiness.md#gates-before-continuing-to-public-release)
-for domain timing. Before buying it, verify availability and obtain an approved
+for model evaluation, costs, vector-store compatibility and domain timing.
+Before buying the domain, verify availability and obtain an approved
 registration/renewal quote within the [selected budget](decisions.md#product-scope).
 
 ### Deployment administrator profile
@@ -150,45 +148,90 @@ registration/renewal quote within the [selected budget](decisions.md#product-sco
 The owner-authorized `afterglow` IAM role uses temporary sessions,
 not permanent access keys. On the current WSL host, its private CLI config is
 `/home/dukelee/.config/afterglow/aws/config`; the profile is `afterglow`.
-This explicit config avoids writing to the Windows-linked default `.aws`
-directory. Verify the assumed identity with:
+Exported access keys can take precedence over a profile selected through
+`AWS_PROFILE`. The CLI examples select the profile with `--profile`. The
+application and importer commands use `env -u` to clear inherited profile,
+key, web identity, and container credential overrides for the launched process.
+[AWS credential precedence](https://docs.aws.amazon.com/cli/latest/topic/config-vars.html#credentials)
+
+Verify the assumed identity with the private config.
 
 ```sh
 AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
+AWS_SHARED_CREDENTIALS_FILE=/home/dukelee/.config/afterglow/aws/credentials \
+AWS_LOGIN_CACHE_DIRECTORY=/home/dukelee/.config/afterglow/aws/login-cache \
   aws --profile afterglow sts get-caller-identity
 ```
 
-The profile obtains one-hour role credentials from the owner's browser-login
-session. When that source session expires, authenticate `afterglow-source`
-again using the same config and the WSL login cache directory
-`/home/dukelee/.config/afterglow/aws/login-cache`. The role's administrator
+The `afterglow` profile uses a `credential_process` that reads the project's
+private WSL `afterglow-source` login session, calls STS AssumeRole, and returns
+one-hour role credentials to its caller. It does not use `role_arn` /
+`source_profile` or the AWS CLI's standard on-disk assume-role cache.
+The separate `afterglow-source` profile uses `login_session`.
+When the browser-login session expires, refresh `afterglow-source` with
+the same config and cache.
+
+```sh
+AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
+AWS_SHARED_CREDENTIALS_FILE=/home/dukelee/.config/afterglow/aws/credentials \
+AWS_LOGIN_CACHE_DIRECTORY=/home/dukelee/.config/afterglow/aws/login-cache \
+  aws login --profile afterglow-source
+```
+
+An unqualified `aws login` refreshes the default profile/cache, not necessarily
+this project session. On this host the default `.aws` path points to Windows;
+the explicit paths above keep project authentication inside WSL. Never copy
+tokens into this repository, logs or chat.
+
+The role's administrator
 permissions are for deployment tooling only; do not assign it to the website
 or API runtime. No hosting resources have been provisioned by this role setup.
 
 ### Hosted intent parsing (not yet deployed)
 
-To select Bedrock explicitly on the WSL host:
+The local preview makes paid Bedrock calls for recommendations. Run this
+command from the persistent worktree to start Uvicorn on port 8001 with the
+prepared preview catalog. Refresh an expired session with the
+[project login](#deployment-administrator-profile).
 
 ```sh
-AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
-AWS_PROFILE=afterglow AWS_REGION=us-west-2 INTENT_PROVIDER=bedrock \
-  uv run uvicorn movie_db_llm.main:app --reload
+env -u AWS_DEFAULT_PROFILE -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY \
+  -u AWS_SESSION_TOKEN -u AWS_SECURITY_TOKEN -u AWS_WEB_IDENTITY_TOKEN_FILE \
+  -u AWS_ROLE_ARN -u AWS_ROLE_SESSION_NAME \
+  -u AWS_CONTAINER_CREDENTIALS_RELATIVE_URI -u AWS_CONTAINER_CREDENTIALS_FULL_URI \
+  -u AWS_CONTAINER_AUTHORIZATION_TOKEN -u AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE \
+  AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
+  AWS_SHARED_CREDENTIALS_FILE=/home/dukelee/.config/afterglow/aws/credentials \
+  AWS_LOGIN_CACHE_DIRECTORY=/home/dukelee/.config/afterglow/aws/login-cache \
+  AWS_PROFILE=afterglow AWS_REGION=us-west-2 INTENT_PROVIDER=bedrock \
+  DATABASE_URL="sqlite:///$PWD/.tools/preview/catalog.sqlite3" \
+  uv run uvicorn movie_db_llm.main:app --host 127.0.0.1 --port 8001 --reload
 ```
 
 See [inference configuration](../README.md#inference-configuration) for provider
 settings and defaults, and the [API contract](../README.md#api) for failure
-responses. Hosted parsing uses one bounded Converse call, at most 512 output
-tokens, a bounded input context, and no automatic paid retries. Catalog browsing,
-movie details and health remain available when inference fails.
+responses. Hosted parsing uses one IAM-signed Mantle Chat Completions call
+through the regional `/v1` route, at most 1,024 completion tokens (including
+reasoning), a bounded input context, and no automatic paid retries. It requires
+exactly one `movie_intent` function call and rejects truncated output, refusals,
+wrong function names and invalid arguments.
+Hosted examples pair each assistant function call with its tool reply. The
+prompt calls for integer years and empty lists for an unconstrained request.
+Ollama uses plain-JSON examples. Both providers share the extraction rules
+and the application's interpretation of year comparisons.
+Credentials refresh through the normal AWS credential chain; Lambda will use
+its execution role, not the local administrator profile. No API key is needed.
+Catalog browsing, movie details and health remain available when inference fails.
 
-This is adapter support, not proof of model quality or a public deployment.
-See [AWS readiness](aws-readiness.md) for live-check results and pending gates.
 Deterministic regression checks run without AWS credentials or paid calls:
 
 ```sh
 uv run pytest tests/test_bedrock.py tests/test_recommendations.py
 uv run pyright scripts/check_bedrock.py
 ```
+
+For the opt-in paid evaluation outside CI, see the
+[bounded live check](aws-readiness.md#repeat-the-bounded-live-parsing-check).
 
 The opening selection shuffles on a new visit; its seed stays fixed while
 paging. A `?seed=332` URL makes a visit reproducible. Verified poster matches

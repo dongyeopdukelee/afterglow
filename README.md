@@ -125,7 +125,8 @@ No matching movies returns an empty `items` list without relaxing filters.
 This step supports genres, release years, and title keywords. Requests for
 plot subjects (such as dogs), mood, actors, exclusions, or OR conditions
 return HTTP 422 rather than silently dropping those constraints. Empty or
-oversized request text also returns 422. Model parsing is probabilistic:
+oversized request text also returns 422, as do requests with no movie filters,
+such as greetings. Model parsing is probabilistic:
 schema validation prevents invalid queries but cannot guarantee that every
 request is interpreted correctly. Semantic synopsis search comes next.
 
@@ -143,8 +144,8 @@ The API never executes model-generated SQL.
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Ollama service URL |
 | `OLLAMA_MODEL` | `qwen3.5:2b` | Locally downloaded model tag |
 | `OLLAMA_TIMEOUT_SECONDS` | `120` | HTTP inference timeout in seconds |
-| `AWS_REGION` | `us-west-2` | Bedrock client region (Oregon) |
-| `BEDROCK_MODEL_ID` | `us.amazon.nova-micro-v1:0` | Bedrock model or inference profile supporting the required Converse tool contract |
+| `AWS_REGION` | `us-west-2` | Bedrock client region; explicitly set to override the Oregon default |
+| `BEDROCK_MODEL_ID` | `mistral.ministral-3-8b-instruct` | Mantle model supporting the `/v1` Chat Completions forced-function contract; overrides require live validation |
 
 ## Tests and checks
 
