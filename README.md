@@ -69,6 +69,7 @@ To run the local website, use Node.js 24+ and start Vite in another terminal:
 ```bash
 cd frontend
 npm ci --ignore-scripts
+npm run fonts
 npm run dev
 ```
 
@@ -79,12 +80,18 @@ See [website development](docs/website.md) for build, browser verification and
 deployment prerequisites. This milestone runs locally; AWS deployment and
 plot/mood matching remain upcoming.
 
+See [poster sourcing and storage](docs/posters.md) for the bundled artwork
+and the separate offline catalog-wide acquisition CLI.
+
 ## API
 
 - `GET /health` reports whether the API is running.
 - `GET /movies/{movie_id}` returns a movie card and its full synopsis, or 404.
 - `GET /movies` returns an ordered page of imported movie cards. It accepts
   `limit` (default 20, maximum 100) and `offset` (default 0) query parameters.
+  Without a seed, movies are ordered by title and identifier.
+  An optional `seed` (0–2147483647) selects repeatable shuffled discovery,
+  with verified poster matches first. Keep the same seed between pages.
 - `POST /recommendations` interprets a natural-language request using the
   configured provider and returns up to 10 matching movie cards plus the
   parsed intent.
@@ -111,7 +118,8 @@ The response uses an `items` envelope with lightweight movie cards and an
 Title matching uses literal, case-insensitive substrings. Exact years, decades,
 since, and until use inclusive year bounds; before and after use exclusive
 bounds. Undated movies only match when no year filter is requested.
-Results are ordered by title and identifier, with no relevance ranking yet.
+Recommendation results are ordered by title and identifier, with no relevance
+ranking yet.
 No matching movies returns an empty `items` list without relaxing filters.
 
 This step supports genres, release years, and title keywords. Requests for

@@ -1,6 +1,7 @@
 """Database connection and session setup."""
 
 from collections.abc import Generator
+from hashlib import sha256
 from sqlite3 import Connection as SQLiteConnection
 
 from sqlalchemy import create_engine, event
@@ -13,6 +14,11 @@ engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
 
 
+def catalog_shuffle(movie_id: int, seed: int) -> str:
+    """Give each film a repeatable shuffle key for one browsing session."""
+    return sha256(f"{seed}:{movie_id}".encode()).hexdigest()
+
+
 @event.listens_for(engine, "connect")
 def configure_sqlite_connection(
     database_connection: SQLiteConnection,
@@ -22,6 +28,9 @@ def configure_sqlite_connection(
     database_connection.execute("PRAGMA foreign_keys = ON")
     database_connection.create_function(
         "casefold", 1, str.casefold, deterministic=True
+    )
+    database_connection.create_function(
+        "catalog_shuffle", 2, catalog_shuffle, deterministic=True
     )
 
 
