@@ -10,9 +10,8 @@ case "$(uname -r)" in
     ;;
 esac
 
-afterglow_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
 afterglow_aws_directory="$HOME/.config/afterglow/aws"
-cd -- "$afterglow_root"
 
 # A profile selected through AWS_PROFILE alone can lose to inherited keys.
 unset AWS_DEFAULT_PROFILE AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY

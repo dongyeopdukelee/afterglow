@@ -23,15 +23,19 @@ def launcher_environment(tmp_path: Path, release: str) -> dict[str, str]:
 
 
 @pytest.mark.parametrize(
-    ("arguments", "release", "port"),
+    ("command", "release", "port"),
     [
-        ([], "4.4.0-19041-Microsoft", 8000),
-        (["--port", "8765"], "6.6.87-microsoft-standard-WSL2", 8765),
-        (["--check"], "6.6.87-microsoft-standard-WSL2", None),
+        (["scripts/dev-api.sh"], "4.4.0-19041-Microsoft", 8000),
+        (
+            [str(LAUNCHER), "--port", "8765"],
+            "6.6.87-microsoft-standard-WSL2",
+            8765,
+        ),
+        ([str(LAUNCHER), "--check"], "6.6.87-microsoft-standard-WSL2", None),
     ],
 )
 def test_launcher_keeps_project_auth_through_dotenv_loaders(
-    tmp_path: Path, arguments: list[str], release: str, port: int | None
+    tmp_path: Path, command: list[str], release: str, port: int | None
 ) -> None:
     """Observe real uv and Uvicorn after dotenv processing, before binding."""
     real_uv = shutil.which("uv")
@@ -74,6 +78,7 @@ def test_launcher_keeps_project_auth_through_dotenv_loaders(
     aws_directory = tmp_path / ".config/afterglow/aws"
     provider = "ollama" if port is not None else "bedrock"
     environment = launcher_environment(tmp_path, release) | {
+        "CDPATH": ".",
         "UV_NO_SYNC": "1",
         "UV_OFFLINE": "1",
         "UV_ENV_FILE": str(dotenv),
@@ -104,8 +109,8 @@ def test_launcher_keeps_project_auth_through_dotenv_loaders(
         "INTENT_PROVIDER": provider,
     }
     result = subprocess.run(
-        ["bash", str(LAUNCHER), *arguments],
-        cwd=tmp_path,
+        command,
+        cwd=tmp_path if Path(command[0]).is_absolute() else PROJECT_ROOT,
         env=environment,
         capture_output=True,
         text=True,
@@ -264,13 +269,26 @@ def test_config_report_rejects_invalid_region(tmp_path: Path) -> None:
     assert result.stdout == ""
 
 
-def test_compose_publishes_api_only_on_loopback() -> None:
-    if shutil.which("docker") is None:
-        pytest.skip("Docker Compose is needed to resolve the published port")
+@pytest.mark.parametrize("model", [None, "cached-alternative:7b"])
+def test_offline_compose_model_and_ports(
+    model: str | None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    try:
+        subprocess.run(
+            ["docker", "compose", "version"], check=True, capture_output=True
+        )
+    except FileNotFoundError, subprocess.CalledProcessError:
+        pytest.skip("Docker Compose is needed to resolve the offline profile")
+    if model is None:
+        monkeypatch.delenv("OLLAMA_MODEL", raising=False)
+    else:
+        monkeypatch.setenv("OLLAMA_MODEL", model)
     result = subprocess.run(
         [
             "docker",
             "compose",
+            "--env-file",
+            os.devnull,
             "-f",
             "docker-compose.yml",
             "--profile",
@@ -285,6 +303,7 @@ def test_compose_publishes_api_only_on_loopback() -> None:
         check=True,
     )
     services = json.loads(result.stdout)["services"]
+    assert services["api"]["environment"].get("OLLAMA_MODEL") == model
     (port,) = services["api"]["ports"]
     assert (port["host_ip"], int(port["published"]), port["target"]) == (
         "127.0.0.1",

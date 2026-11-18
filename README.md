@@ -55,20 +55,34 @@ from deterministic regression tests and does not validate semantic search.
 
 ### Optional offline inference
 
-To work offline, run [Ollama for Linux](https://docs.ollama.com/linux) inside
-WSL with cloud inference disabled, then explicitly select it for the API:
+For a project-local [Ollama for Linux](https://docs.ollama.com/linux)
+installation in WSL, start the server from the repository root in its own
+terminal. Use the project model cache on every start.
 
 ```bash
-OLLAMA_NO_CLOUD=1 ollama serve
-ollama pull qwen3.5:2b
+OLLAMA_MODELS="$PWD/.tools/ollama/models" OLLAMA_NO_CLOUD=1 \
+  .tools/ollama/bin/ollama serve
+```
+
+If Ollama is on your `PATH`, use `ollama` in place of the project executable.
+Omit `OLLAMA_MODELS` if you keep the weights in Ollama's default cache.
+
+With the server running, download the selected tag once while online in a
+second terminal. Skip this step if the tag is already cached.
+
+```bash
+.tools/ollama/bin/ollama pull "${OLLAMA_MODEL:-qwen3.5:2b}"
+```
+
+With the weights cached, start the API in the second terminal for offline use.
+
+```bash
 INTENT_PROVIDER=ollama scripts/dev-api.sh
 ```
 
-Run the API in another terminal while Ollama serves. An Ollama result does not
-establish acceptance for the Bedrock route, and provider failures never trigger
-an automatic switch. Catalog browsing and movie details do not need inference.
-Project-local Ollama installations can use `.tools/ollama/bin/ollama` and the
-ignored `.tools/ollama/models` directory for model storage.
+An Ollama result does not establish acceptance for the Bedrock route, and
+provider failures never trigger an automatic switch. Catalog browsing and
+movie details do not need inference.
 
 The API is available at `http://127.0.0.1:8000`.
 
@@ -195,18 +209,24 @@ curl 'http://127.0.0.1:8000/movies?limit=20&offset=0'
 ```
 
 Docker Compose stores the SQLite database in the `movie-db-data` named volume.
-The default API uses the same Bedrock application settings as the WSL launch;
-`INTENT_PROVIDER`, `AWS_REGION`, and `BEDROCK_MODEL_ID` overrides pass through
-when supplied. Container authentication must be configured separately: the
-host's credential-process executable and paths do not exist in the image.
+The default API uses the same Bedrock application settings as the WSL launch.
+`INTENT_PROVIDER`, `AWS_REGION`, `BEDROCK_MODEL_ID`, and `OLLAMA_MODEL`
+overrides pass through when supplied. The image lacks the host's credential
+process and its paths, so configure container authentication separately.
 Use the WSL launcher for the authenticated local-development workflow above.
 
-For explicit offline Docker inference:
+For offline Docker inference, download the selected model once while online.
+Skip this step if the tag is already in the `ollama-models` volume.
 
 ```bash
-INTENT_PROVIDER=ollama docker compose --profile offline up -d ollama
-INTENT_PROVIDER=ollama docker compose --profile offline exec ollama ollama pull qwen3.5:2b
-INTENT_PROVIDER=ollama docker compose --profile offline up
+docker compose --profile offline up -d ollama
+docker compose --profile offline exec ollama ollama pull "${OLLAMA_MODEL:-qwen3.5:2b}"
+```
+
+With both service images and the model cached, start the offline stack.
+
+```bash
+INTENT_PROVIDER=ollama docker compose --profile offline up --pull never
 ```
 
 Ollama runs on CPU, disables cloud inference, and stores downloaded models in

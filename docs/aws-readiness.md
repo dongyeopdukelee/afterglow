@@ -20,8 +20,9 @@ application configuration. Ollama is an explicit offline alternative.
 
 The 2026-11-18 development-parity recheck passed all ten live cases with 363
 catalog genre labels. The batch reported 34,127 input tokens and 484 completion
-tokens; parser latency was 239–1,667 ms, median 385.5 ms. All cases reported
-the same request fingerprint:
+tokens. Per-case evaluator time ranged from 239 to 1,667 ms (median 385.5 ms),
+including parsing, scoring and request fingerprinting. Every case reported
+the request fingerprint
 `22ac008957900599c13afa15375186ff68050e71af5824d6c539ff1192380874`.
 These are measured results for this batch, not an accuracy or latency guarantee.
 
@@ -83,10 +84,10 @@ plain-JSON examples, the strict parser rejected text-only replies and quoted
 years. See the [hosted prompt protocol](website.md#hosted-intent-parsing-not-yet-deployed).
 
 One passing ten-request batch reported 34,127 input tokens and 489 completion
-tokens. Parser-call latency was 287–1,250 ms, median 390 ms, including
-credential resolution and the network. This is a small development sample,
-not an SLA, a general accuracy guarantee, or total session spend. Other
-diagnostic calls are not included in those counts.
+tokens. Per-case evaluator time ranged from 287 to 1,250 ms (median 390 ms),
+including credential resolution, the network call and scoring. This is a small
+development sample, not an SLA, a general accuracy guarantee, or total session
+spend. Other diagnostic calls are not included in those counts.
 
 Real HTTP requests through Vite, Uvicorn, Bedrock and the imported SQLite
 catalog also passed: 1990s comedies, post-2000 thrillers and literal `dog`

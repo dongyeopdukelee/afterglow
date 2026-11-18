@@ -7,7 +7,7 @@ services:
       AWS_REGION:
       BEDROCK_MODEL_ID:
       OLLAMA_BASE_URL: http://ollama:11434
-      OLLAMA_MODEL: qwen3.5:2b
+      OLLAMA_MODEL:
     ports:
       - "127.0.0.1:8000:8000"
     volumes:

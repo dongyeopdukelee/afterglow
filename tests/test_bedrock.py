@@ -4,6 +4,7 @@ import json
 import runpy
 import subprocess
 import sys
+import time
 from collections.abc import Callable, Generator
 from hashlib import sha256
 from pathlib import Path
@@ -40,6 +41,7 @@ from movie_db_llm.models import Base, Movie, MovieGenre
 from movie_db_llm.recommendations import (
     InvalidModelResponseError,
     ModelUnavailableError,
+    MovieIntent,
 )
 
 type Replies = list[httpx.Response | Exception]
@@ -872,6 +874,30 @@ def test_live_check_records_billed_results_with_catalog_vocabulary(
     before = database.read_bytes()
     monkeypatch.setattr(config, "BEDROCK_MODEL_ID", "catalog-test-model")
     monkeypatch.setattr(bedrock, "bedrock_client", lambda: aws_client)
+
+    # The request takes 125 ms. Scoring or formatting the error takes another
+    # second after the parser returns or raises.
+    now = 10.0
+    dump_intent = MovieIntent.model_dump
+
+    def request_delay(_request: httpx.Request) -> None:
+        nonlocal now
+        now += 0.125
+
+    def score_intent(intent: MovieIntent) -> dict[str, object]:
+        nonlocal now
+        now += 1
+        return dump_intent(intent)
+
+    def format_error(error: InvalidModelResponseError) -> str:
+        nonlocal now
+        now += 1
+        return Exception.__str__(error)
+
+    monkeypatch.setattr(time, "perf_counter", lambda: now)
+    aws_client.event_hooks["request"].append(request_delay)
+    monkeypatch.setattr(MovieIntent, "model_dump", score_intent)
+    monkeypatch.setattr(InvalidModelResponseError, "__str__", format_error)
     replies.append(reply(intent_payload(), finish))
     assert run_live_check(monkeypatch) == 1
     (request,) = requests
@@ -896,7 +922,7 @@ def test_live_check_records_billed_results_with_catalog_vocabulary(
         "completion_tokens": 50,
         "total_tokens": 150,
     }
-    assert record["latency_ms"] >= 0
+    assert record["latency_ms"] == 125
     assert aws_client.event_hooks["response"] == []
     assert database.read_bytes() == before
 
