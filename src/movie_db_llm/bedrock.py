@@ -32,6 +32,13 @@ MAX_OUTPUT_TOKENS = 1024
 _UNAVAILABLE_MESSAGE = "Hosted search is temporarily unavailable."
 
 
+def _mantle_endpoint(region: str) -> str:
+    if not region or region != region.strip():
+        raise InvalidRegionError(region_name=region)
+    validate_region_name(region)
+    return f"https://bedrock-mantle.{region}.api.aws/v1/"
+
+
 def request_payload(
     query: str, genres: list[str], model: str
 ) -> dict[str, object]:
@@ -69,7 +76,7 @@ def inference_configuration(
     comparable across requests. Prompt examples, schema, vocabulary, generation
     settings, model, and endpoint all participate in the fingerprint.
     """
-    endpoint = f"https://bedrock-mantle.{AWS_REGION}.api.aws/v1/"
+    endpoint = _mantle_endpoint(AWS_REGION)
     payload = request_payload("<user query>", genres, model)
     fingerprint = sha256(
         json.dumps(
@@ -81,7 +88,7 @@ def inference_configuration(
         "model": model,
         "region": AWS_REGION,
         "endpoint": endpoint,
-        "max_completion_tokens": MAX_OUTPUT_TOKENS,
+        "max_completion_tokens": payload["max_completion_tokens"],
         "temperature": payload["temperature"],
         "catalog_genres": len(genres),
         "fingerprint": fingerprint,
@@ -150,11 +157,8 @@ class _Response(BaseModel):
 @lru_cache(maxsize=1)
 def bedrock_client() -> httpx.Client:
     """Reuse connections, never API keys or a captured expiring credential."""
-    if not AWS_REGION or AWS_REGION != AWS_REGION.strip():
-        raise InvalidRegionError(region_name=AWS_REGION)
-    validate_region_name(AWS_REGION)
     return httpx.Client(
-        base_url=f"https://bedrock-mantle.{AWS_REGION}.api.aws/v1/",
+        base_url=_mantle_endpoint(AWS_REGION),
         auth=BedrockAuth(boto3.Session(), AWS_REGION),
         timeout=httpx.Timeout(20, connect=5),
         follow_redirects=False,

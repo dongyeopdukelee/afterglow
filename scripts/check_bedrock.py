@@ -2,29 +2,23 @@
 
 import argparse
 import json
-from collections.abc import Generator
-from contextlib import contextmanager
-from pathlib import Path
 from time import perf_counter
-from urllib.parse import quote, urlencode
 
 import httpx
 from botocore.exceptions import BotoCoreError, ClientError
 from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import Connection, create_engine, make_url
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.pool import NullPool
 
 from movie_db_llm.bedrock import (
     BedrockIntentParser,
     bedrock_client,
     inference_configuration,
 )
-from movie_db_llm.config import AWS_REGION, BEDROCK_MODEL_ID, DATABASE_URL
+from movie_db_llm.catalog import catalog_genres, open_catalog
+from movie_db_llm.config import BEDROCK_MODEL_ID, DATABASE_URL, INTENT_PROVIDER
 from movie_db_llm.recommendations import (
     InvalidModelResponseError,
     ModelUnavailableError,
-    catalog_genres_query,
 )
 
 
@@ -36,46 +30,6 @@ class Usage(BaseModel):
     total_tokens: int = Field(ge=0, strict=True)
 
 
-@contextmanager
-def open_catalog(database_url: str) -> Generator[Connection]:
-    """Open an existing SQLite catalog without permitting writes or creation."""
-    url = make_url(database_url)
-    database = url.database
-    if (
-        url.drivername not in ("sqlite", "sqlite+pysqlite")
-        or not database
-        or database == ":memory:"
-    ):
-        raise ValueError("Expected a file-backed SQLite catalog.")
-    dialect = url.get_dialect()()
-    _, driver_options = dialect.create_connect_args(url)
-    uri_options: dict[str, str | tuple[str, ...]] = {}
-    if database.startswith("file:") and driver_options.get("uri"):
-        database = database.partition("#")[0]
-        if (
-            database in ("file:", "file::memory:")
-            or url.query.get("mode") == "memory"
-        ):
-            raise ValueError("Expected a file-backed SQLite catalog.")
-        uri_options = dict(url.difference_update_query(driver_options).query)
-    else:
-        database = Path(database).absolute().as_uri()
-    uri_options["mode"] = "ro"
-    query = urlencode(uri_options, doseq=True, quote_via=quote)
-    readonly_url = url.set(
-        database=f"{database}?{query}", query={"uri": "true"}
-    )
-    driver_options["uri"] = True
-    engine = create_engine(
-        readonly_url, connect_args=driver_options, poolclass=NullPool
-    )
-    try:
-        with engine.connect() as connection:
-            yield connection
-    finally:
-        engine.dispose()
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -84,33 +38,35 @@ def main() -> int:
         required=True,
         help="Authorize up to ten bounded, paid Bedrock parsing requests.",
     )
-    parser.add_argument(
-        "--catalog",
-        action="store_true",
-        help="Use all genres in the configured catalog (read-only).",
-    )
-    arguments = parser.parse_args()
-    genres = ["Comedy", "Drama", "Horror", "Thriller"]
-    if arguments.catalog:
-        try:
-            with open_catalog(DATABASE_URL) as connection:
-                genres = list(connection.scalars(catalog_genres_query()))
-        except SQLAlchemyError, ValueError:
-            print(
-                json.dumps(
-                    {"status": "blocked", "message": "Cannot read catalog."}
-                )
+    parser.parse_args()
+    if INTENT_PROVIDER != "bedrock":
+        print(
+            json.dumps(
+                {
+                    "status": "blocked",
+                    "message": "Live checks require INTENT_PROVIDER=bedrock.",
+                }
             )
-            return 1
-        if not {"Comedy", "Horror", "Thriller"}.issubset(genres):
-            message = (
-                "Benchmark requires Comedy, Horror and Thriller."
-                if genres
-                else "Empty catalog."
-            )
-            print(json.dumps({"status": "blocked", "message": message}))
-            return 1
+        )
+        return 1
     try:
+        with open_catalog(DATABASE_URL) as connection:
+            genres = catalog_genres(connection)
+    except SQLAlchemyError, ValueError:
+        print(
+            json.dumps({"status": "blocked", "message": "Cannot read catalog."})
+        )
+        return 1
+    if not {"Comedy", "Horror", "Thriller"}.issubset(genres):
+        message = (
+            "Benchmark requires Comedy, Horror and Thriller."
+            if genres
+            else "Empty catalog."
+        )
+        print(json.dumps({"status": "blocked", "message": message}))
+        return 1
+    try:
+        configuration = inference_configuration(genres, model=BEDROCK_MODEL_ID)
         client = bedrock_client()
         model = BedrockIntentParser(client, BEDROCK_MODEL_ID)
     except BotoCoreError, ClientError:
@@ -231,42 +187,37 @@ def main() -> int:
             try:
                 intent = model.parse(query, genres)
             except (ModelUnavailableError, InvalidModelResponseError) as error:
-                print(
-                    json.dumps(
-                        {
-                            "query": query,
-                            "status": "blocked",
-                            "message": str(error),
-                        }
-                    )
+                elapsed = perf_counter() - started
+                result: dict[str, object] = {
+                    "status": "blocked",
+                    "message": str(error),
+                }
+            else:
+                elapsed = perf_counter() - started
+                actual = intent.model_dump()
+                passed = all(genre in genres for genre in intent.genres) and (
+                    actual == expected
+                    if expected is not None
+                    else bool(intent.unsupported_constraints)
                 )
-                return 1
-            actual = intent.model_dump()
-            passed = all(genre in genres for genre in intent.genres) and (
-                actual == expected
-                if expected is not None
-                else bool(intent.unsupported_constraints)
-            )
+                result = {
+                    "status": "pass" if passed else "fail",
+                    "actual": actual,
+                    "expected": expected
+                    if expected is not None
+                    else {
+                        "genres": "must be a subset of the catalog genres",
+                        "unsupported_constraints": "must be nonempty",
+                    },
+                }
             measured_usage = usage[-1] if usage else None
             print(
                 json.dumps(
                     {
+                        **configuration,
                         "query": query,
-                        "status": "pass" if passed else "fail",
-                        "actual": actual,
-                        "expected": expected
-                        if expected is not None
-                        else {
-                            "genres": "must be a subset of the catalog genres",
-                            "unsupported_constraints": "must be nonempty",
-                        },
-                        "model": BEDROCK_MODEL_ID,
-                        "region": AWS_REGION,
-                        "catalog_genres": len(genres),
-                        "inference": inference_configuration(
-                            genres, model=BEDROCK_MODEL_ID
-                        ),
-                        "latency_ms": round((perf_counter() - started) * 1000),
+                        **result,
+                        "latency_ms": round(elapsed * 1000),
                         "usage": (
                             measured_usage.model_dump()
                             if measured_usage
@@ -276,7 +227,7 @@ def main() -> int:
                 ),
                 flush=True,
             )
-            if not passed:
+            if result["status"] != "pass":
                 return 1
     finally:
         client.event_hooks["response"].remove(observe)

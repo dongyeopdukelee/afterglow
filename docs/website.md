@@ -199,16 +199,13 @@ DATABASE_URL="sqlite:///$PWD/.tools/preview/catalog.sqlite3" \
   scripts/dev-api.sh --port 8001
 ```
 
-The launcher selects the existing WSL-only profile and clears inherited
-credential overrides. It does not set separate development model defaults:
-the application configuration is shared with the future hosted deployment.
-`AFTERGLOW_AWS_DIRECTORY` and `AFTERGLOW_AWS_PROFILE` can explicitly select
-another WSL auth directory/profile; they do not change the model settings.
-Use `scripts/dev-api.sh --print-config` with the same `DATABASE_URL` to inspect
-the request fingerprint. Use `scripts/dev-api.sh --check` for the bounded live
-Bedrock evaluation. Changing `INTENT_PROVIDER=ollama` is an intentional offline
-route and does not establish Bedrock acceptance.
-
+The launcher selects the WSL `afterglow` profile under
+`$HOME/.config/afterglow/aws`, clears inherited credential overrides, and
+disables dotenv loading. The server uses the shared application model settings.
+Run `uv run --locked --no-env-file movie-db-llm inference-config` with the
+server's `DATABASE_URL` to inspect the fingerprint. Run `scripts/dev-api.sh --check`
+for the bounded live evaluation with Bedrock selected. Set
+`INTENT_PROVIDER=ollama` to start an offline server.
 
 See [inference configuration](../README.md#inference-configuration) for provider
 settings and defaults, and the [API contract](../README.md#api) for failure

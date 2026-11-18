@@ -5,7 +5,6 @@ import runpy
 import subprocess
 import sys
 from collections.abc import Callable, Generator
-from contextlib import AbstractContextManager
 from hashlib import sha256
 from pathlib import Path
 from typing import cast
@@ -22,7 +21,7 @@ from botocore.exceptions import (
     NoCredentialsError,
 )
 from fastapi.testclient import TestClient
-from sqlalchemy import URL, Connection, create_engine, event, text
+from sqlalchemy import URL, create_engine, event, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
@@ -33,6 +32,7 @@ from movie_db_llm.bedrock import (
     BedrockIntentParser,
     inference_configuration,
 )
+from movie_db_llm.catalog import open_catalog
 from movie_db_llm.database import configure_sqlite_connection, get_session
 from movie_db_llm.intent_contract import intent_messages
 from movie_db_llm.main import app
@@ -57,8 +57,12 @@ def requests() -> list[httpx.Request]:
 
 @pytest.fixture
 def aws_client(
-    replies: Replies, requests: list[httpx.Request]
+    replies: Replies,
+    requests: list[httpx.Request],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> Generator[httpx.Client]:
+    monkeypatch.setattr(bedrock, "AWS_REGION", "us-west-2")
+
     def handle(request: httpx.Request) -> httpx.Response:
         requests.append(request)
         result = replies.pop(0)
@@ -569,10 +573,11 @@ def test_credentials_initialization_failure_is_sanitized(
     assert hosted_api.get("/movies").status_code == 200
 
 
-def run_live_check(monkeypatch: pytest.MonkeyPatch, *arguments: str) -> int:
-    monkeypatch.setattr(
-        sys, "argv", ["check_bedrock.py", "--live", *arguments]
-    )
+def run_live_check(
+    monkeypatch: pytest.MonkeyPatch, *, provider: str = "bedrock"
+) -> int:
+    monkeypatch.setattr(config, "INTENT_PROVIDER", provider)
+    monkeypatch.setattr(sys, "argv", ["check_bedrock.py", "--live"])
     root = Path(__file__).resolve().parents[1]
     main = cast(
         Callable[[], int],
@@ -582,6 +587,7 @@ def run_live_check(monkeypatch: pytest.MonkeyPatch, *arguments: str) -> int:
 
 
 @pytest.mark.parametrize("stage", ["lookup", "refresh"])
+@pytest.mark.usefixtures("evaluation_catalog")
 @pytest.mark.parametrize(
     "error",
     [
@@ -624,11 +630,12 @@ def test_credential_provider_failure_is_sanitized(
     assert hosted_api.get("/movies").status_code == 200
     assert run_live_check(monkeypatch) == 1
     output = capsys.readouterr()
-    assert json.loads(output.out) == {
-        "query": "Comedies from the 1990s",
-        "status": "blocked",
-        "message": message,
-    }
+    record = json.loads(output.out)
+    assert record["query"] == "Comedies from the 1990s"
+    assert record["status"] == "blocked"
+    assert record["message"] == message
+    assert record["usage"] is None
+    assert str(error) not in output.out
     assert output.err == ""
     assert requests == []
 
@@ -644,6 +651,7 @@ def test_unexpected_transport_error_propagates(
 
 
 @pytest.mark.parametrize("region", ["us-west-2:443", "", "us-west-2\n"])
+@pytest.mark.usefixtures("evaluation_catalog")
 def test_invalid_region_blocks_hosted_setup(
     hosted_api: httpx.Client,
     monkeypatch: pytest.MonkeyPatch,
@@ -658,6 +666,8 @@ def test_invalid_region_blocks_hosted_setup(
     monkeypatch.setattr(ollama, "bedrock_client", bedrock.bedrock_client)
     with pytest.raises(InvalidRegionError):
         bedrock.bedrock_client()
+    with pytest.raises(InvalidRegionError):
+        inference_configuration(["Comedy"])
 
     response = hosted_api.post("/recommendations", json={"query": "Comedies"})
     assert response.status_code == 503
@@ -669,6 +679,7 @@ def test_invalid_region_blocks_hosted_setup(
     }
 
 
+@pytest.mark.usefixtures("evaluation_catalog")
 def test_live_check_initialization_failure_is_sanitized(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -685,6 +696,7 @@ def test_live_check_initialization_failure_is_sanitized(
     }
 
 
+@pytest.mark.usefixtures("evaluation_catalog")
 def test_live_check_service_failure_stops_without_leaking_details(
     aws_client: httpx.Client,
     replies: Replies,
@@ -699,46 +711,20 @@ def test_live_check_service_failure_stops_without_leaking_details(
     )
 
 
-def assert_evaluator_request(
-    requests: list[httpx.Request], model: str, genres: list[str]
-) -> None:
-    (request,) = requests
-    body = json.loads(request.content)
-    assert body["model"] == model
-    system = body["messages"][0]
-    assert system["role"] == "system"
-    assert json.loads(system["content"].splitlines()[-1]) == genres
-
-
-def test_live_check_reports_wrong_results_and_measured_usage(
-    aws_client: httpx.Client,
-    replies: Replies,
-    requests: list[httpx.Request],
+@pytest.mark.parametrize("provider", ["ollama", "bedrok"])
+@pytest.mark.usefixtures("evaluation_catalog")
+def test_live_check_requires_active_bedrock_provider_before_aws(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    provider: str,
 ) -> None:
-    # The decade query must not silently acquire an unrelated title filter.
-    replies.append(reply(intent_payload()))
-    monkeypatch.setattr(config, "BEDROCK_MODEL_ID", "evaluation-test-model")
-    monkeypatch.setattr(config, "DATABASE_URL", "invalid-database-url")
-    monkeypatch.setattr(bedrock, "bedrock_client", lambda: aws_client)
-    assert run_live_check(monkeypatch) == 1
-    assert_evaluator_request(
-        requests,
-        "evaluation-test-model",
-        ["Comedy", "Drama", "Horror", "Thriller"],
+    monkeypatch.setattr(
+        bedrock, "bedrock_client", lambda: pytest.fail("Unexpected AWS setup")
     )
+    assert run_live_check(monkeypatch, provider=provider) == 1
     record = json.loads(capsys.readouterr().out)
-    assert record["status"] == "fail"
-    assert record["usage"] == {
-        "prompt_tokens": 100,
-        "completion_tokens": 50,
-        "total_tokens": 150,
-    }
-    assert record["model"] == "evaluation-test-model"
-    assert record["catalog_genres"] == 4
-    assert record["latency_ms"] >= 0
-    assert aws_client.event_hooks["response"] == []
+    assert record["status"] == "blocked"
+    assert "INTENT_PROVIDER=bedrock" in record["message"]
 
 
 @pytest.mark.parametrize("uri", [False, True])
@@ -770,7 +756,7 @@ def test_live_check_blocks_invalid_catalog_before_aws(
         pytest.fail("AWS client initialized before catalog validation")
 
     monkeypatch.setattr(bedrock, "bedrock_client", forbidden)
-    assert run_live_check(monkeypatch, "--catalog") == 1
+    assert run_live_check(monkeypatch) == 1
     assert json.loads(capsys.readouterr().out) == {
         "status": "blocked",
         "message": "Empty catalog."
@@ -781,8 +767,8 @@ def test_live_check_blocks_invalid_catalog_before_aws(
 
 
 @pytest.mark.parametrize("uri", [False, True])
-def test_evaluator_catalog_connection_rejects_writes(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, uri: bool
+def test_catalog_inspection_connection_rejects_writes(
+    tmp_path: Path, uri: bool
 ) -> None:
     """SQLite enforces read-only access even if a source URI requests writes."""
     database = tmp_path / (
@@ -794,17 +780,11 @@ def test_evaluator_catalog_connection_rejects_writes(
         connection.execute(text("INSERT INTO example VALUES (1)"))
     engine.dispose()
     before = database.read_bytes()
-    root = Path(__file__).resolve().parents[1]
-    open_catalog = cast(
-        Callable[[str], AbstractContextManager[Connection]],
-        runpy.run_path(str(root / "scripts/check_bedrock.py"))["open_catalog"],
-    )
     url = (
         f"sqlite:///{database.as_uri()}?mode=rwc&uri=true"
         if uri
         else f"sqlite:///{database}"
     )
-    # The callable comes from the executable evaluation script, not a mock.
     with open_catalog(url) as connection:
         assert connection.scalar(text("SELECT id FROM example")) == 1
         with pytest.raises(OperationalError):
@@ -833,6 +813,15 @@ def create_evaluation_catalog(
     return database
 
 
+@pytest.fixture
+def evaluation_catalog(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    create_evaluation_catalog(
+        tmp_path, monkeypatch, ["Comedy", "Horror", "Thriller"]
+    )
+
+
 @pytest.mark.parametrize(
     "genres",
     [
@@ -854,7 +843,7 @@ def test_live_check_blocks_catalog_missing_a_benchmark_genre(
         "bedrock_client",
         lambda: pytest.fail("Invalid catalog reached AWS"),
     )
-    assert run_live_check(monkeypatch, "--catalog") == 1
+    assert run_live_check(monkeypatch) == 1
     assert json.loads(capsys.readouterr().out) == {
         "status": "blocked",
         "message": "Benchmark requires Comedy, Horror and Thriller.",
@@ -862,13 +851,18 @@ def test_live_check_blocks_catalog_missing_a_benchmark_genre(
     assert database.read_bytes() == before
 
 
-def test_live_check_uses_catalog_vocabulary(
+@pytest.mark.parametrize(
+    ("finish", "status"), [("tool_calls", "fail"), ("length", "blocked")]
+)
+def test_live_check_records_billed_results_with_catalog_vocabulary(
     aws_client: httpx.Client,
     replies: Replies,
     requests: list[httpx.Request],
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
+    finish: str,
+    status: str,
 ) -> None:
     database = create_evaluation_catalog(
         tmp_path,
@@ -878,37 +872,50 @@ def test_live_check_uses_catalog_vocabulary(
     before = database.read_bytes()
     monkeypatch.setattr(config, "BEDROCK_MODEL_ID", "catalog-test-model")
     monkeypatch.setattr(bedrock, "bedrock_client", lambda: aws_client)
-    replies.append(reply(intent_payload()))
-    assert run_live_check(monkeypatch, "--catalog") == 1
-    assert_evaluator_request(
-        requests,
-        "catalog-test-model",
-        ["Comedy", "Horror", "Mystery", "Thriller", "Western"],
-    )
+    replies.append(reply(intent_payload(), finish))
+    assert run_live_check(monkeypatch) == 1
+    (request,) = requests
+    body = json.loads(request.content)
+    assert body["model"] == "catalog-test-model"
+    system = body["messages"][0]
+    assert system["role"] == "system"
+    assert json.loads(system["content"].splitlines()[-1]) == [
+        "Comedy",
+        "Horror",
+        "Mystery",
+        "Thriller",
+        "Western",
+    ]
     record = json.loads(capsys.readouterr().out)
-    assert record["status"] == "fail"
+    assert record["status"] == status
     assert record["model"] == "catalog-test-model"
     assert record["catalog_genres"] == 5
+    assert record["fingerprint"] == wire_fingerprint(request)
+    assert record["usage"] == {
+        "prompt_tokens": 100,
+        "completion_tokens": 50,
+        "total_tokens": 150,
+    }
+    assert record["latency_ms"] >= 0
+    assert aws_client.event_hooks["response"] == []
     assert database.read_bytes() == before
 
 
 @pytest.mark.parametrize(
-    ("plot_genres", "or_filters", "use_catalog", "expected_statuses"),
+    ("plot_genres", "or_filters", "expected_statuses"),
     [
-        (["Dog movies"], {}, False, ["pass"] * 7 + ["fail"]),
+        (["Dog movies"], {}, ["pass"] * 7 + ["fail"]),
         (
             ["Comedy"],
             {"genres": ["Horror", "Drama"]},
-            True,
             ["pass"] * 8 + ["fail"],
         ),
         (
             ["Comedy"],
             {"unsupported_constraints": []},
-            False,
             ["pass"] * 8 + ["fail"],
         ),
-        (["Comedy"], {"genres": []}, False, ["pass"] * 10),
+        (["Comedy"], {"genres": []}, ["pass"] * 10),
     ],
     ids=[
         "invented-plot-genre",
@@ -917,16 +924,15 @@ def test_live_check_uses_catalog_vocabulary(
         "valid",
     ],
 )
+@pytest.mark.usefixtures("evaluation_catalog")
 def test_live_check_scores_rejections_against_supplied_genres(
     aws_client: httpx.Client,
     replies: Replies,
     requests: list[httpx.Request],
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
-    tmp_path: Path,
     plot_genres: list[str],
     or_filters: dict[str, object],
-    use_catalog: bool,
     expected_statuses: list[str],
 ) -> None:
     empty = intent_payload(genres=[], title_keywords=[], year_filters=[])
@@ -958,18 +964,12 @@ def test_live_check_scores_rejections_against_supplied_genres(
         | or_filters,
         empty,
     ]
-    arguments: list[str] = []
-    if use_catalog:
-        create_evaluation_catalog(
-            tmp_path, monkeypatch, ["Comedy", "Horror", "Thriller"]
-        )
-        arguments.append("--catalog")
     replies.extend(
         reply(payload) for payload in payloads[: len(expected_statuses)]
     )
     monkeypatch.setattr(bedrock, "bedrock_client", lambda: aws_client)
 
-    assert run_live_check(monkeypatch, *arguments) == (
+    assert run_live_check(monkeypatch) == (
         1 if "fail" in expected_statuses else 0
     )
     records = [
@@ -977,6 +977,9 @@ def test_live_check_scores_rejections_against_supplied_genres(
     ]
     assert [record["status"] for record in records] == expected_statuses
     assert len(requests) == len(expected_statuses)
+    assert {record["fingerprint"] for record in records} == {
+        wire_fingerprint(requests[0])
+    }
     for record in records[7:9]:
         assert record["expected"] == {
             "genres": "must be a subset of the catalog genres",
@@ -984,11 +987,10 @@ def test_live_check_scores_rejections_against_supplied_genres(
         }
 
 
-@pytest.mark.parametrize("arguments", [[], ["--catalog"]])
-def test_live_check_requires_explicit_opt_in(arguments: list[str]) -> None:
+def test_live_check_requires_explicit_opt_in() -> None:
     root = Path(__file__).resolve().parents[1]
     result = subprocess.run(
-        [sys.executable, str(root / "scripts/check_bedrock.py"), *arguments],
+        [sys.executable, str(root / "scripts/check_bedrock.py")],
         cwd=root,
         capture_output=True,
         text=True,
@@ -996,6 +998,17 @@ def test_live_check_requires_explicit_opt_in(arguments: list[str]) -> None:
     )
     assert result.returncode == 2
     assert "--live" in result.stderr
+
+
+def wire_fingerprint(request: httpx.Request) -> str:
+    body = json.loads(request.content)
+    body["messages"][-1]["content"] = "<user query>"
+    endpoint = str(request.url).removesuffix("chat/completions")
+    return sha256(
+        json.dumps(
+            {"endpoint": endpoint, "request": body}, sort_keys=True
+        ).encode()
+    ).hexdigest()
 
 
 @pytest.mark.parametrize("model", ["first-model", "second-model"])
@@ -1018,14 +1031,7 @@ def test_configuration_fingerprint_describes_the_actual_request(
     replies.append(reply(intent_payload()))
     BedrockIntentParser(aws_client, model).parse("private search text", genres)
     actual_request = requests[0]
-    body = json.loads(actual_request.content)
-    body["messages"][-1]["content"] = "<user query>"
     endpoint = str(actual_request.url).removesuffix("chat/completions")
-    expected = sha256(
-        json.dumps(
-            {"endpoint": endpoint, "request": body}, sort_keys=True
-        ).encode()
-    ).hexdigest()
     configuration = inference_configuration(genres, model=model)
     assert configuration == {
         "provider": "bedrock",
@@ -1035,7 +1041,7 @@ def test_configuration_fingerprint_describes_the_actual_request(
         "max_completion_tokens": max_tokens,
         "temperature": 0,
         "catalog_genres": 2,
-        "fingerprint": expected,
+        "fingerprint": wire_fingerprint(actual_request),
     }
     assert "private search text" not in json.dumps(configuration)
     assert (

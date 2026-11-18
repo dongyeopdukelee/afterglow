@@ -31,13 +31,41 @@ post-2000 thrillers, and literal `dog` title searches. A detail request loaded
 the synopsis. Plot, OR, and greeting requests returned 422 without cards.
 The temporary smoke API was stopped afterward.
 
-`scripts/dev-api.sh --print-config` reports the same safe inference identity
-used by the live evaluator. It binds the model, endpoint, generation settings,
-prompt/examples, schema, and genre vocabulary to the actual outgoing request
-format. It contains no user query or credentials. It does not hash the full
-catalog: compare catalog results using the same source snapshot as well.
+`uv run --locked --no-env-file movie-db-llm inference-config` reports the
+same fingerprint used by the live evaluator. It covers the model, endpoint,
+generation settings, prompt examples, schema, and genre labels in the outgoing
+request. A fixed placeholder takes the place of the user query. Comparing
+movie results also requires the same catalog snapshot.
 No public application has been deployed, so hosted behavior still needs
 post-deployment verification with the same cases and configuration.
+
+### Repeat the HTTP acceptance cases
+
+Use the same imported CMU snapshot and fingerprint for local and hosted
+checks. Set `API_BASE` to the API under test. Send each JSON body verbatim to
+`POST /recommendations` with `Content-Type: application/json`. For example,
+the first request against the local API is
+
+```sh
+API_BASE=http://127.0.0.1:8000
+curl -sS -w '\nHTTP %{http_code}\n' "$API_BASE/recommendations" \
+  -H 'Content-Type: application/json' -d '{"query":"Comedies from the 1990s"}'
+```
+
+| JSON body | HTTP | Expected result on this snapshot |
+| --- | --- | --- |
+| `{"query":"Comedies from the 1990s"}` | 200 | Every card includes `Comedy` and has a release year from 1990 through 1999 inclusive. |
+| `{"query":"Thriller movies after 2000"}` | 200 | Every card includes `Thriller` and has a release year greater than 2000. |
+| `{"query":"Movies whose titles contain dog"}` | 200 | Every title contains the literal substring `dog`, ignoring case. |
+| `{"query":"90s comedy movies about dogs"}` | 422 | The detail identifies an unsupported constraint and the response has no `items`. |
+| `{"query":"Horror or Comedy movies"}` | 422 | The detail identifies an unsupported constraint and the response has no `items`. |
+| `{"query":"hello"}` | 422 | The detail asks for a supported filter and the response has no `items`. |
+
+Each 200 response must have ten distinct movie cards in `items`, ordered by
+title and ID. Each card contains exactly `id`, `title`, `release_year` and
+`genres`. Take the first comedy card's `id` and request `GET /movies/{id}`
+at the same `API_BASE`. Expect 200, the same four card fields and values, and
+a nonempty `synopsis` string.
 
 ### Earlier validation of the selected model
 
@@ -290,10 +318,9 @@ flag authorizes up to ten model calls. The script exits nonzero on the first
 blocked or incorrect result. It checks decade bounds, all five year comparisons,
 literal title punctuation, unsupported plot/OR requests and an unconstrained
 greeting against fixed expected behavior.
-Each parsed result records the shared inference configuration fingerprint,
-latency and provider-reported usage, including
-reasoning tokens in completion usage. Missing usage is reported as null, not
-estimated. It is not an evaluation of semantic search.
+Each attempted parse records the batch fingerprint, parser latency, and
+provider-reported token counts, including usage returned with an incomplete
+model response. Missing usage is recorded as `null`.
 
 To repeat the catalog-backed run, set `DATABASE_URL` to the migrated,
 imported database. The command reads its distinct genre labels and uses the
@@ -303,10 +330,7 @@ imported database. The command reads its distinct genre labels and uses the
 scripts/dev-api.sh --check
 ```
 
-For a development-only diagnostic with the fixed four-genre vocabulary, use
-`uv run python scripts/check_bedrock.py --live` inside a shell already configured
-with the private WSL profile. That diagnostic does not establish catalog parity.
-With `--catalog`, the evaluator opens SQLite read-only. It reports a blocked
-result before AWS client setup if the file or schema is missing, or if the
-catalog lacks any of the three genres the cases require (`Comedy`, `Horror`,
-and `Thriller`).
+The evaluator requires the active Bedrock provider and opens SQLite read-only.
+It stops before AWS client setup if the file or schema is missing, or if the
+catalog lacks any of the three required genres (`Comedy`, `Horror`, and
+`Thriller`).

@@ -44,7 +44,7 @@ Inspect the safe configuration fingerprint, or run the bounded real-model
 check with the imported catalog:
 
 ```bash
-scripts/dev-api.sh --print-config
+uv run --locked --no-env-file movie-db-llm inference-config
 scripts/dev-api.sh --check
 ```
 
@@ -214,5 +214,5 @@ Ollama runs on CPU, disables cloud inference, and stores downloaded models in
 Stop the service with `Ctrl+C`, then remove the containers with:
 
 ```bash
-docker compose down
+docker compose --profile offline down
 ```
