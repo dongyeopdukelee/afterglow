@@ -1,11 +1,20 @@
+import { createHash } from 'node:crypto';
 import { test, expect } from '@playwright/test';
-import type { Locator, Request } from '@playwright/test';
+import type { Locator, Request, Response } from '@playwright/test';
 
 const comedyIntent = {
   genres: ['Comedy'], year_min: 1990, year_max: 1999,
   year_min_inclusive: true, year_max_inclusive: true,
   title_keywords: [], unsupported_constraints: [],
 };
+
+const metropolisSha256 = '18601f3133cb00c8af5849852991a44575f683ccdb9b8926c261f193f7254ee7';
+const charadeSha256 = '0bc01a747de463d751f49654e3fac1ec6957494d1b0ef3a64327a8b343c04fb0';
+
+async function expectPosterDigest(response: Response | undefined, expected: string) {
+  expect(response).toBeDefined();
+  expect(createHash('sha256').update(await response!.body()).digest('hex')).toBe(expected);
+}
 
 async function expectDecodedPosters(images: Locator, count: number) {
   await expect.poll(() => images.evaluateAll((elements, expected) =>
@@ -79,11 +88,11 @@ test('a full page fetches twelve posters and a fresh page load fetches them agai
   const tag = `reload-${crypto.randomUUID()}`;
   const counter = `/movies/_poster-fixture/${tag}`;
   await page.setExtraHTTPHeaders({ 'X-Poster-Test': tag });
-  const responses: { path: string; cache: string }[] = [];
+  const responses: Response[] = [];
   page.on('response', response => {
     const path = new URL(response.url()).pathname;
     if (/^\/movies\/\d+\/poster$/.test(path)) {
-      responses.push({ path, cache: response.headers()['cache-control'] });
+      responses.push(response);
     }
   });
   for (const load of [1, 2]) {
@@ -92,8 +101,17 @@ test('a full page fetches twelve posters and a fresh page load fetches them agai
     await expectDecodedPosters(page.locator('.movie-card img'), 12);
     expect(await (await page.request.get(counter)).json()).toBe(load * 12);
     expect(responses).toHaveLength(load * 12);
-    expect(new Set(responses.slice(-12).map(response => response.path)).size).toBe(12);
-    expect(responses.every(response => response.cache === 'no-store')).toBe(true);
+    const current = responses.slice(-12);
+    expect(new Set(current.map(response => new URL(response.url()).pathname)).size).toBe(12);
+    expect(current.every(response => response.headers()['cache-control'] === 'no-store')).toBe(true);
+    for (const [title, path, digest] of [
+      ['Film 00', '/movies/1/poster', metropolisSha256],
+      ['Film 01', '/movies/2/poster', charadeSha256],
+    ]) {
+      const card = page.locator('.movie-card').filter({ has: page.getByRole('heading', { name: title, exact: true }) });
+      await expect(card.locator('img')).toHaveAttribute('src', path);
+      await expectPosterDigest(current.find(response => new URL(response.url()).pathname === path), digest);
+    }
   }
   await expect(page.getByRole('region', { name: 'Image credits' })).toContainText('This product uses the TMDB API but is not endorsed or certified by TMDB.');
 });
@@ -107,14 +125,26 @@ test('each detail opening fetches its own poster while the card is pending', asy
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await cardRequest;
     await expect.poll(async () => (await page.request.get(counter)).json()).toBe(12);
-    const card = page.getByRole('button', { name: /Film 00/ });
-    for (const opening of [1, 2]) {
-      expect(await card.locator('img').evaluate(image => (image as HTMLImageElement).complete)).toBe(false);
+    const openings = [
+      { film: '00', id: 1, digest: metropolisSha256 },
+      { film: '00', id: 1, digest: metropolisSha256 },
+      { film: '01', id: 2, digest: charadeSha256 },
+    ];
+    for (const [index, { film, id, digest }] of openings.entries()) {
+      const card = page.locator('.movie-card').filter({ has: page.getByRole('heading', { name: `Film ${film}`, exact: true }) });
+      if (id === 1) {
+        expect(await card.locator('img').evaluate(image => (image as HTMLImageElement).complete)).toBe(false);
+      }
+      const detailPoster = page.waitForResponse(response => {
+        const url = new URL(response.url());
+        return url.pathname === `/movies/${id}/poster` && url.searchParams.has('detail');
+      });
       await card.click();
       const dialog = page.getByRole('dialog');
-      await expect(dialog).toContainText('The complete synopsis for film 00.');
+      await expect(dialog).toContainText(`The complete synopsis for film ${film}.`);
       await expectDecodedPosters(dialog.locator('img'), 1);
-      expect(await (await page.request.get(counter)).json()).toBe(12 + opening);
+      await expectPosterDigest(await detailPoster, digest);
+      expect(await (await page.request.get(counter)).json()).toBe(13 + index);
       await dialog.getByRole('button', { name: 'Close movie details' }).click();
     }
   } finally {
@@ -127,6 +157,11 @@ test('two tabs share three stalled card slots and keep detail and catalog reques
   const counter = `/movies/_poster-fixture/${tag}`;
   await context.setExtraHTTPHeaders({ 'X-Poster-Test': tag });
   const otherTab = await context.newPage();
+  let searchPoster: Response | undefined;
+  otherTab.on('response', response => {
+    const url = new URL(response.url());
+    if (url.pathname === '/movies/14/poster' && !url.search) searchPoster = response;
+  });
   try {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.movie-card')).toHaveCount(12);
@@ -159,6 +194,8 @@ test('two tabs share three stalled card slots and keep detail and catalog reques
     await otherTab.request.post(`${counter}/release`);
   }
   await expectDecodedPosters(otherTab.locator('.movie-card img'), 1);
+  await expect(otherTab.locator('.movie-card img')).toHaveAttribute('src', '/movies/14/poster');
+  await expectPosterDigest(searchPoster, charadeSha256);
 });
 
 for (const mode of ['shared', 'local'] as const) {

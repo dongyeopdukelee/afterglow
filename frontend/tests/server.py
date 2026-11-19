@@ -34,15 +34,41 @@ from movie_db_llm.main import app, get_intent_parser
 from movie_db_llm.models import Movie, MovieGenre
 from movie_db_llm.recommendations import MovieIntent
 
+FILM_IDENTITIES = (
+    "4c80885c510be0735a6e50a048913fc551f4af5b9fde23867ee12d926c137c20",
+    "041d68aab61d6dfaeb2c82279fd30ddb99b6a8e5aac300f43deee1b9e24f78b3",
+    "7ce72b7189027d91df52c5d89d561f3884f2ebb6ac528c739a2bdc38b647880e",
+    "09eef8173695880cb6290cdd64b444a651e96c39a70597545127382e7e6358f0",
+    "88e88d27a2113d4e63b4017c1e1f7d77f9ce3222829e8c38af4eb545c29f62c3",
+    "aa92ac8b66579876b22c4ee19c891522baafd86168c244e84c4544a39a04836b",
+    "6125a234b580fd0257dfbc99571ce62106ed918f6b4a00cab6668f0ac69e3568",
+    "5a190c7fb54a86c8afd51283d6f8e5423553ab0bf4611cc6414226c83ee73b56",
+    "5b3330a9e5acda14843b18bd388b362b8ebed0b328f85f7f0178f71288434e87",
+    "1c4de3351ab0f2144c87c730fb5334b2272206cb1a8d14b91e74cf66dc8355d6",
+    "98c210e55d71ef31b6a5c1bb7f2d0805503c1696f1bd409d331e47bb6b5db28a",
+    "e7a08cfee3550ad54cb051fdd1e1bb8ff398f5e89a453367047c3216d4b0d901",
+    "889dea5ff3723310710424633054f4b1fd7f1d01fb5dd30bc1407c233b3bfc2b",
+    "72a59fcd7a34c1383763ccd12d5037e5108e5f844fd27ab77067c362e9929dd9",
+)
+
 
 @contextmanager
-def local_posters(directory: Path) -> Generator[posters.PosterAsset]:
-    filename = "18601f3133cb00c8af58.jpg"
-    data = (
-        Path(__file__).resolve().parents[1] / "public" / "posters" / filename
-    ).read_bytes()
-    asset = posters.PosterAsset(filename, len(data), sha256(data).hexdigest())
-    expected_get = ("GET", f"/test-posters/posters/{filename}", True)
+def local_posters(
+    directory: Path,
+) -> Generator[dict[str, posters.PosterAsset]]:
+    bundled = Path(__file__).resolve().parents[1] / "public" / "posters"
+    assets: list[posters.PosterAsset] = []
+    objects: dict[str, bytes] = {}
+    for filename in ("18601f3133cb00c8af58.jpg", "0bc01a747de463d751f4.jpg"):
+        data = (bundled / filename).read_bytes()
+        assets.append(
+            posters.PosterAsset(filename, len(data), sha256(data).hexdigest())
+        )
+        objects[f"/test-posters/posters/{filename}"] = data
+    index = {
+        identity: assets[number % len(assets)]
+        for number, identity in enumerate(FILM_IDENTITIES)
+    }
     scope = ContextVar("poster_test", default="")
     calls: Counter[str] = Counter()
     unexpected: list[tuple[str, str, bool]] = []
@@ -60,7 +86,12 @@ def local_posters(directory: Path) -> Generator[posters.PosterAsset]:
             with lock:
                 calls[tag] += 1
                 arrival = (self.command, self.path, signed)
-                self.valid = bool(tag) and arrival == expected_get
+                self.valid = (
+                    bool(tag)
+                    and self.command == "GET"
+                    and self.path in objects
+                    and signed
+                )
                 if not self.valid:
                     unexpected.append(arrival)
             return True
@@ -69,6 +100,7 @@ def local_posters(directory: Path) -> Generator[posters.PosterAsset]:
             if not self.valid:
                 self.send_error(403)
                 return
+            data = objects[self.path]
             self.send_response(200)
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
@@ -157,7 +189,7 @@ def local_posters(directory: Path) -> Generator[posters.PosterAsset]:
         worker = threading.Thread(target=server.serve_forever, daemon=True)
         worker.start()
         try:
-            yield asset
+            yield index
         finally:
             server.shutdown()
             worker.join(timeout=3)
@@ -168,7 +200,7 @@ def local_posters(directory: Path) -> Generator[posters.PosterAsset]:
 def run() -> None:
     with (
         TemporaryDirectory(prefix="afterglow-browser-") as temp,
-        local_posters(Path(temp)) as asset,
+        local_posters(Path(temp)) as index,
     ):
         url = f"sqlite:///{Path(temp) / 'catalog.sqlite3'}"
         subprocess.run(
@@ -185,16 +217,8 @@ def run() -> None:
                 release_year=2000 + number,
                 genre_assignments=[MovieGenre(genre="Drama")],
             )
-            for number in range(14)
+            for number in range(len(FILM_IDENTITIES))
         ]
-        index = {
-            posters.poster_identity(
-                movie.title,
-                movie.release_year,
-                sha256(movie.synopsis.encode()).hexdigest(),
-            ): asset
-            for movie in movies
-        }
         posters.poster_index = lambda: index
         with Session(engine) as session:
             session.add_all(movies)

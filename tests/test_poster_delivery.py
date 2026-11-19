@@ -2,7 +2,6 @@
 
 import gzip
 import io
-import json
 import threading
 from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor
@@ -35,20 +34,28 @@ from movie_db_llm.recommendations import MovieIntent
 real_poster_index = posters.poster_index
 
 
-@pytest.fixture
-def image() -> tuple[posters.PosterAsset, bytes]:
+def bundled_image(filename: str) -> tuple[posters.PosterAsset, bytes]:
     root = Path(__file__).resolve().parents[1]
-    entry = json.loads((root / "src/movie_db_llm/posters.json").read_text())[0]
-    data = (root / "frontend/public/posters" / entry["filename"]).read_bytes()
+    data = (root / "frontend/public/posters" / filename).read_bytes()
     return posters.PosterAsset(
-        entry["filename"], len(data), sha256(data).hexdigest()
+        filename, len(data), sha256(data).hexdigest()
     ), data
 
 
+@pytest.fixture
+def image() -> tuple[posters.PosterAsset, bytes]:
+    return bundled_image("18601f3133cb00c8af58.jpg")
+
+
+@pytest.fixture
+def second_image() -> tuple[posters.PosterAsset, bytes]:
+    return bundled_image("0bc01a747de463d751f4.jpg")
+
+
 class FakeS3:
-    def __init__(self, data: bytes, expected_path: str) -> None:
-        self.data = data
-        self.expected_path = expected_path
+    def __init__(self, objects: dict[str, bytes], primary_path: str) -> None:
+        self.objects = objects
+        self.primary_path = primary_path
         self.statuses: list[int] = []
         self.truncate = False
         self.chunked = False
@@ -61,7 +68,7 @@ class FakeS3:
         self.lock = threading.Lock()
 
     def assert_gets(self, count: int) -> None:
-        assert self.calls == [("GET", self.expected_path, True)] * count
+        assert self.calls == [("GET", self.primary_path, True)] * count
 
 
 type PosterDelivery = tuple[Client, FakeS3, BlockingPortal]
@@ -95,10 +102,19 @@ def delivery(
     isolated_aws: None,
     monkeypatch: pytest.MonkeyPatch,
     image: tuple[posters.PosterAsset, bytes],
+    second_image: tuple[posters.PosterAsset, bytes],
     tmp_path: Path,
 ) -> Generator[PosterDelivery]:
     asset, data = image
-    source = FakeS3(data, f"/test-posters/posters/{asset.filename}")
+    second_asset, second_data = second_image
+    primary_path = f"/test-posters/posters/{asset.filename}"
+    source = FakeS3(
+        {
+            primary_path: data,
+            f"/test-posters/posters/{second_asset.filename}": second_data,
+        },
+        primary_path,
+    )
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -118,12 +134,12 @@ def delivery(
             if not self.signed:
                 self.send_error(403)
                 return
-            if self.path != source.expected_path:
+            payload = source.objects.get(self.path)
+            if payload is None:
                 self.send_error(404)
                 return
             with source.lock:
                 status = source.statuses.pop(0) if source.statuses else 200
-            payload = source.data
             if status != 200:
                 code = {
                     301: "PermanentRedirect",
@@ -187,10 +203,14 @@ def delivery(
         pass
 
     monkeypatch.setattr(storage, "sleep", no_sleep)
-    identity = (
+    first_identity = (
         "6457d8d5bd7786afa0772964304b45283322e826318539425cd8049ac430d988"
     )
-    monkeypatch.setattr(posters, "poster_index", lambda: {identity: asset})
+    second_identity = (
+        "0b61eb74aa3e71622a4deb27dca6dbef1c29532743e2101d37518988d73ff842"
+    )
+    index = {first_identity: asset, second_identity: second_asset}
+    monkeypatch.setattr(posters, "poster_index", lambda: index)
     engine = create_engine(
         f"sqlite:///{tmp_path / 'catalog.sqlite3'}",
         pool_size=1,
@@ -219,6 +239,18 @@ def delivery(
                     title="A Film",
                     release_year=2001,
                     synopsis="Another story.",
+                ),
+                Movie(
+                    id=454,
+                    title="Second Film",
+                    release_year=2001,
+                    synopsis="Story.",
+                ),
+                Movie(
+                    id=455,
+                    title="A Different Film",
+                    release_year=2001,
+                    synopsis="Story.",
                 ),
             ]
         )
@@ -325,20 +357,28 @@ def test_corrupt_packaged_index_omits_images_without_breaking_catalog(
         posters.cached_poster_index.cache_clear()
 
 
-def test_poster_uses_one_get_per_request_and_returns_verified_bytes(
+def test_each_film_returns_its_own_poster_in_one_get_per_request(
     delivery: PosterDelivery,
     image: tuple[posters.PosterAsset, bytes],
+    second_image: tuple[posters.PosterAsset, bytes],
 ) -> None:
     client, s3, _ = delivery
-    _, data = image
     for _ in range(2):
-        response = client.get("/movies/451/poster")
-        assert response.status_code == 200
-        assert response.content == data
-        assert response.headers["content-type"] == "image/jpeg"
-        assert response.headers["cache-control"] == "no-store"
-        assert response.headers["x-content-type-options"] == "nosniff"
-    s3.assert_gets(2)
+        for movie_id, data in ((451, image[1]), (454, second_image[1])):
+            response = client.get(f"/movies/{movie_id}/poster")
+            assert response.status_code == 200
+            assert response.content == data
+            assert response.headers["content-type"] == "image/jpeg"
+            assert response.headers["cache-control"] == "no-store"
+            assert response.headers["x-content-type-options"] == "nosniff"
+    assert (
+        s3.calls
+        == [
+            ("GET", "/test-posters/posters/18601f3133cb00c8af58.jpg", True),
+            ("GET", "/test-posters/posters/0bc01a747de463d751f4.jpg", True),
+        ]
+        * 2
+    )
 
 
 def test_transient_failure_can_succeed_on_third_and_last_attempt(
@@ -446,7 +486,7 @@ def test_in_flight_posters_leave_catalog_workers_and_connections_free(
     s3.assert_gets(2)
 
 
-@pytest.mark.parametrize("movie_id", [452, 453, 999])
+@pytest.mark.parametrize("movie_id", [452, 453, 455, 999])
 def test_unmatched_identity_never_uses_s3(
     delivery: PosterDelivery, movie_id: int
 ) -> None:
