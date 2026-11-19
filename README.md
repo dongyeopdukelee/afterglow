@@ -1,7 +1,8 @@
 # Afterglow
 
-A small movie catalog with a React/TypeScript website and a FastAPI API for
-local natural-language retrieval, built as a system-design learning project.
+A small movie catalog with a React/TypeScript website and a FastAPI backend
+for natural-language searches by genre, year, and title, built as a
+system-design learning project.
 
 See the [product roadmap](docs/roadmap.md) for the planned path from a catalog
 API to grounded natural-language movie recommendations.
@@ -25,44 +26,17 @@ uv run alembic upgrade head
 uv run movie-db-llm import-cmu
 ```
 
-Run the API with automatic reload:
+Run the API with automatic reload through the WSL launcher:
 
 ```bash
-uv run uvicorn movie_db_llm.main:app --reload
+scripts/dev-api.sh
 ```
 
-For local recommendations, install
-[Ollama for Linux](https://docs.ollama.com/linux) inside WSL, then run it in
-another terminal with cloud inference disabled:
-
-```bash
-OLLAMA_NO_CLOUD=1 ollama serve
-```
-
-Download the selected local model once:
-
-```bash
-ollama pull qwen3.5:2b
-```
-
-If Ollama already runs as a service, configure `OLLAMA_NO_CLOUD=1` for that
-service instead of starting a second server. Catalog browsing and movie details
-work without Ollama. The model can run on CPU; no hosted API key is required.
-For the optional hosted provider, see
-[Bedrock setup](docs/website.md#hosted-intent-parsing-not-yet-deployed).
-
-For a project-local manual installation in `.tools/ollama` (as used in this
-workspace), start the server with the same local model storage directory:
-
-```bash
-OLLAMA_MODELS="$PWD/.tools/ollama/models" OLLAMA_NO_CLOUD=1 \
-  .tools/ollama/bin/ollama serve
-```
-
-Use `.tools/ollama/bin/ollama pull qwen3.5:2b` for the download command in
-that setup. Runtime files and downloaded weights are ignored by Git.
-
-The API is available at `http://127.0.0.1:8000`.
+The API listens at `http://127.0.0.1:8000`. Recommendation searches use
+paid Amazon Bedrock inference by default. The API sends the query and catalog
+genre labels using the same settings intended for deployment. Browsing and
+loading synopses use only the catalog. For Bedrock searches, follow the
+[WSL authentication setup](docs/website.md#deployment-administrator-profile).
 
 To run the local website, use Node.js 24+ and start Vite in another terminal:
 
@@ -82,6 +56,36 @@ plot/mood matching remain upcoming.
 
 See [poster sourcing and storage](docs/posters.md) for the bundled artwork
 and the separate offline catalog-wide acquisition CLI.
+
+### Optional offline inference
+
+For a project-local [Ollama for Linux](https://docs.ollama.com/linux)
+installation in WSL, start the server from the repository root in its own
+terminal. Use the project model cache on every start.
+
+```bash
+OLLAMA_MODELS="$PWD/.tools/ollama/models" OLLAMA_NO_CLOUD=1 \
+  .tools/ollama/bin/ollama serve
+```
+
+If Ollama is on your `PATH`, use `ollama` in place of the project executable.
+Omit `OLLAMA_MODELS` if you keep the weights in Ollama's default cache.
+
+With the server running, download the selected tag once while online in a
+second terminal. Skip this step if the tag is already cached.
+
+```bash
+.tools/ollama/bin/ollama pull "${OLLAMA_MODEL:-qwen3.5:2b}"
+```
+
+With the weights cached, start the API in the second terminal for offline use.
+
+```bash
+INTENT_PROVIDER=ollama scripts/dev-api.sh
+```
+
+An Ollama result does not establish acceptance for the Bedrock route, and
+provider failures never trigger an automatic switch.
 
 ## API
 
@@ -140,12 +144,28 @@ The API never executes model-generated SQL.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `INTENT_PROVIDER` | `ollama` | Select `ollama` or `bedrock`; unknown values return 503 without fallback |
+| `INTENT_PROVIDER` | `bedrock` | Select `bedrock` or `ollama` for recommendations. An unknown value makes this route return HTTP 503. |
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Ollama service URL |
 | `OLLAMA_MODEL` | `qwen3.5:2b` | Locally downloaded model tag |
 | `OLLAMA_TIMEOUT_SECONDS` | `120` | HTTP inference timeout in seconds |
 | `AWS_REGION` | `us-west-2` | Bedrock client region; explicitly set to override the Oregon default |
 | `BEDROCK_MODEL_ID` | `mistral.ministral-3-8b-instruct` | Mantle model supporting the `/v1` Chat Completions forced-function contract; overrides require live validation |
+
+Run the configuration report from the repository root with the API's
+`DATABASE_URL` and provider settings. It works without AWS credentials or a
+model call.
+
+```bash
+uv run --locked --no-env-file movie-db-llm inference-config
+```
+
+For Bedrock, the report reads the SQLite catalog in read-only mode and prints
+a SHA-256 fingerprint of the regional endpoint and request body. The digest
+covers the model, prompt examples, tool schema, generation settings, and genre
+labels. A fixed placeholder takes the place of the user's query. For Ollama,
+the report identifies the selected provider and model. The command exits
+nonzero for an unknown provider. The Bedrock report also fails if the region
+is malformed or the SQLite catalog cannot be read.
 
 ## Tests and checks
 
@@ -162,10 +182,14 @@ uv run pyright
 GitHub Actions runs these checks for pull requests and pushes to `main`. It
 also builds the production image, creates a disposable Docker Compose catalog,
 and checks the running API over HTTP. A separate job runs the
-[website build and browser checks](docs/website.md#verify). The workflow does
-not download the local Ollama model. Python recommendation tests use mocked
-model responses; the Compose smoke test only checks health and catalog browsing
-without starting Ollama.
+[website build and browser checks](docs/website.md#verify). Python recommendation
+tests use mocked model responses, and the Compose smoke test checks health
+and catalog browsing. CI requires neither AWS inference nor Ollama weights.
+
+After changing the Bedrock model or its request settings, use the imported
+catalog for the
+[paid parser evaluation](docs/aws-readiness.md#repeat-the-bounded-live-parsing-check)
+and the [HTTP acceptance cases](docs/aws-readiness.md#repeat-the-http-acceptance-cases).
 
 ## Docker Compose
 
@@ -176,12 +200,11 @@ then start the API:
 docker compose build
 docker compose run --rm api alembic upgrade head
 docker compose run --rm api movie-db-llm import-cmu
-docker compose up -d ollama
-docker compose exec ollama ollama pull qwen3.5:2b
 docker compose up
 ```
 
-Open `http://127.0.0.1:8000/docs` or call:
+Compose publishes the API only on the host's loopback interface. Open
+`http://127.0.0.1:8000/docs` or query the catalog from the host.
 
 ```bash
 curl http://127.0.0.1:8000/health
@@ -189,10 +212,31 @@ curl 'http://127.0.0.1:8000/movies?limit=20&offset=0'
 ```
 
 Docker Compose stores the SQLite database in the `movie-db-data` named volume.
-It runs Ollama on CPU, disables Ollama cloud inference, and stores downloaded
-models in `ollama-models`. The inference port stays on the Compose network.
+The default API uses the same Bedrock application settings as the WSL launch.
+`INTENT_PROVIDER`, `AWS_REGION`, `BEDROCK_MODEL_ID`, and `OLLAMA_MODEL`
+overrides pass through when supplied. The image lacks the host's credential
+process and its paths, so configure container authentication separately.
+Use the WSL launcher for the authenticated local-development workflow above.
+
+For offline Docker inference, download the selected model once while online.
+Skip this step if the tag is already in the `ollama-models` volume.
+
+```bash
+docker compose --profile offline up -d ollama
+docker compose --profile offline exec ollama ollama pull "${OLLAMA_MODEL:-qwen3.5:2b}"
+```
+
+With both images and the model cached, select Ollama for the API and enable
+the offline profile to start its model service.
+
+```bash
+INTENT_PROVIDER=ollama docker compose --profile offline up --pull never
+```
+
+Ollama runs on CPU, disables cloud inference, and stores downloaded models in
+`ollama-models`. Its port stays on the Compose network.
 Stop the service with `Ctrl+C`, then remove the containers with:
 
 ```bash
-docker compose down
+docker compose --profile offline down
 ```

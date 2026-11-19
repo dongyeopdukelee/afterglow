@@ -3,6 +3,7 @@
 import json
 from collections.abc import Generator
 from functools import lru_cache
+from hashlib import sha256
 from typing import Annotated, Literal
 
 import boto3
@@ -31,8 +32,71 @@ MAX_OUTPUT_TOKENS = 1024
 _UNAVAILABLE_MESSAGE = "Hosted search is temporarily unavailable."
 
 
+def _mantle_endpoint(region: str) -> str:
+    if not region or region != region.strip():
+        raise InvalidRegionError(region_name=region)
+    validate_region_name(region)
+    return f"https://bedrock-mantle.{region}.api.aws/v1/"
+
+
+def request_payload(
+    query: str, genres: list[str], model: str
+) -> dict[str, object]:
+    """Build the shared development, evaluation, and hosted request contract."""
+    return {
+        "model": model,
+        "messages": intent_messages(query, genres, tool_call=True),
+        "max_completion_tokens": MAX_OUTPUT_TOKENS,
+        "temperature": 0,
+        "parallel_tool_calls": False,
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": "movie_intent",
+                    "description": "Extract movie search intent.",
+                    "parameters": ModelIntent.model_json_schema(),
+                    "strict": True,
+                },
+            }
+        ],
+        "tool_choice": {
+            "type": "function",
+            "function": {"name": "movie_intent"},
+        },
+    }
+
+
+def inference_configuration(
+    genres: list[str], *, model: str = BEDROCK_MODEL_ID
+) -> dict[str, object]:
+    """Identify actual request settings without user text or credentials.
+
+    Replacing only the user query with a fixed placeholder makes this identity
+    comparable across requests. Prompt examples, schema, vocabulary, generation
+    settings, model, and endpoint all participate in the fingerprint.
+    """
+    endpoint = _mantle_endpoint(AWS_REGION)
+    payload = request_payload("<user query>", genres, model)
+    fingerprint = sha256(
+        json.dumps(
+            {"endpoint": endpoint, "request": payload}, sort_keys=True
+        ).encode()
+    ).hexdigest()
+    return {
+        "provider": "bedrock",
+        "model": model,
+        "region": AWS_REGION,
+        "endpoint": endpoint,
+        "max_completion_tokens": payload["max_completion_tokens"],
+        "temperature": payload["temperature"],
+        "catalog_genres": len(genres),
+        "fingerprint": fingerprint,
+    }
+
+
 class BedrockAuth(httpx.Auth):
-    """Sign each request with fresh temporary credentials, including on Lambda."""
+    """Sign each request with SDK-resolved credentials, including on Lambda."""
 
     requires_request_body = True
 
@@ -92,12 +156,9 @@ class _Response(BaseModel):
 
 @lru_cache(maxsize=1)
 def bedrock_client() -> httpx.Client:
-    """Reuse connections, never API keys or a captured expiring credential."""
-    if not AWS_REGION or AWS_REGION != AWS_REGION.strip():
-        raise InvalidRegionError(region_name=AWS_REGION)
-    validate_region_name(AWS_REGION)
+    """Reuse connections; resolve credentials through the SDK when signing."""
     return httpx.Client(
-        base_url=f"https://bedrock-mantle.{AWS_REGION}.api.aws/v1/",
+        base_url=_mantle_endpoint(AWS_REGION),
         auth=BedrockAuth(boto3.Session(), AWS_REGION),
         timeout=httpx.Timeout(20, connect=5),
         follow_redirects=False,
@@ -106,7 +167,7 @@ def bedrock_client() -> httpx.Client:
 
 
 class BedrockIntentParser:
-    """Use the same validated intent and year semantics as local inference."""
+    """Apply the shared intent and year rules to Bedrock tool responses."""
 
     def __init__(
         self, client: httpx.Client, model: str = BEDROCK_MODEL_ID
@@ -116,34 +177,13 @@ class BedrockIntentParser:
 
     def parse(self, query: str, genres: list[str]) -> MovieIntent:
         """Force one structured result and reject truncated/malformed output."""
-        messages = intent_messages(query, genres, tool_call=True)
-        if len(json.dumps(messages).encode("utf-8")) > MAX_INPUT_BYTES:
+        payload = request_payload(query, genres, self.model)
+        if len(json.dumps(payload["messages"]).encode()) > MAX_INPUT_BYTES:
             raise ModelUnavailableError("Search context exceeds its limit.")
         try:
             response = self.client.post(
                 "chat/completions",
-                json={
-                    "model": self.model,
-                    "messages": messages,
-                    "max_completion_tokens": MAX_OUTPUT_TOKENS,
-                    "temperature": 0,
-                    "parallel_tool_calls": False,
-                    "tools": [
-                        {
-                            "type": "function",
-                            "function": {
-                                "name": "movie_intent",
-                                "description": "Extract movie search intent.",
-                                "parameters": ModelIntent.model_json_schema(),
-                                "strict": True,
-                            },
-                        }
-                    ],
-                    "tool_choice": {
-                        "type": "function",
-                        "function": {"name": "movie_intent"},
-                    },
-                },
+                json=payload,
             )
             response.raise_for_status()
         except (httpx.HTTPError, BotoCoreError, ClientError) as error:

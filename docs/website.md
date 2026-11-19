@@ -46,14 +46,15 @@ The ignored `.tools/preview` directory keeps the real CMU snapshot persistent
 and separate from disposable test databases. For later schema changes, apply
 the migrations to this database before restarting its API.
 
-Start the servers in two terminals from the root of the persistent worktree.
-For the WSL Bedrock preview, use the
-[hosted API command](#hosted-intent-parsing-not-yet-deployed).
-For local inference, start Ollama and run the API with this command.
+Start the WSL API and Vite in two terminals from the root of the persistent
+worktree. Recommendation searches make paid Bedrock calls by default. For
+offline inference with either preview, start the Ollama service and prefix
+the API command with `INTENT_PROVIDER=ollama`. See
+[offline setup](../README.md#optional-offline-inference).
 
 ```sh
-INTENT_PROVIDER=ollama DATABASE_URL="sqlite:///$PWD/.tools/preview/catalog.sqlite3" \
-  uv run uvicorn movie_db_llm.main:app --host 127.0.0.1 --port 8001 --reload
+DATABASE_URL="sqlite:///$PWD/.tools/preview/catalog.sqlite3" \
+  scripts/dev-api.sh --port 8001
 ```
 
 ```sh
@@ -71,12 +72,10 @@ For an independent UI redesign preview, run the other checkout's API on 8002
 and Vite on 5175. From the persistent worktree, run
 `export PREVIEW_CATALOG="$PWD/.tools/preview/catalog.sqlite3"` before switching
 the shell to the redesign checkout. Its API opens the same catalog read-only.
-For Bedrock, substitute the read-only URL below and port 8002 in the
-[hosted API command](#hosted-intent-parsing-not-yet-deployed).
 
 ```sh
-INTENT_PROVIDER=ollama DATABASE_URL="sqlite:///file:$PREVIEW_CATALOG?mode=ro&uri=true" \
-  uv run uvicorn movie_db_llm.main:app --host 127.0.0.1 --port 8002 --reload
+DATABASE_URL="sqlite:///file:$PREVIEW_CATALOG?mode=ro&uri=true" \
+  scripts/dev-api.sh --port 8002
 ```
 
 ```sh
@@ -145,31 +144,59 @@ registration/renewal quote within the [selected budget](decisions.md#product-sco
 
 ### Deployment administrator profile
 
-The owner-authorized `afterglow` IAM role uses temporary sessions,
-not permanent access keys. On the current WSL host, its private CLI config is
-`/home/dukelee/.config/afterglow/aws/config`; the profile is `afterglow`.
-Exported access keys can take precedence over a profile selected through
-`AWS_PROFILE`. The CLI examples select the profile with `--profile`. The
-application and importer commands use `env -u` to clear inherited profile,
-key, web identity, and container credential overrides for the launched process.
+The WSL profile is `afterglow-dev`, backed by the `afterglow-wsl-dev` IAM user
+with `AdministratorAccess`. Provisioning, policy attachment, STS identity,
+fresh-zsh defaults, and live Bedrock requests were verified on 2026-11-19 UTC.
+See [live validation](aws-readiness.md#persistent-wsl-authentication) and the
+[project decisions](decisions.md#product-scope) for evidence and the owner's
+choice of credential and permissions. This IAM key pair has no automatic
+expiry and does not depend on the browser-login session.
+
+The setup uses the private WSL directory `$HOME/.config/afterglow/aws/`
+for CLI configuration and the `credentials` file. The `[afterglow-dev]`
+section in `credentials` holds `aws_access_key_id` and `aws_secret_access_key`.
+The directory has mode `0700` and its config/credentials files have mode
+`0600`. Keep keys outside application
+code, frontend/Vite variables, Git, logs, and chat.
+
+The WSL launcher selects the `[afterglow-dev]` section of the private
+`credentials` file for both the API and `scripts/dev-api.sh --check`. It
+disables alternate credential sources and dotenv loading for uv and Uvicorn.
 [AWS credential precedence](https://docs.aws.amazon.com/cli/latest/topic/config-vars.html#credentials)
 
-Verify the assumed identity with the private config.
+Define this function in your WSL shell to run commands
+with the same profile and credentials file as the launcher. The function
+applies the settings only to the command it runs.
 
 ```sh
-AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
-AWS_SHARED_CREDENTIALS_FILE=/home/dukelee/.config/afterglow/aws/credentials \
-AWS_LOGIN_CACHE_DIRECTORY=/home/dukelee/.config/afterglow/aws/login-cache \
-  aws --profile afterglow sts get-caller-identity
+with_afterglow_dev() {
+  env -u AWS_DEFAULT_PROFILE -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY \
+    -u AWS_SESSION_TOKEN -u AWS_SECURITY_TOKEN -u AWS_WEB_IDENTITY_TOKEN_FILE \
+    -u AWS_ROLE_ARN -u AWS_ROLE_SESSION_NAME -u AWS_CREDENTIAL_FILE \
+    -u AWS_LOGIN_CACHE_DIRECTORY \
+    -u AWS_CONTAINER_CREDENTIALS_RELATIVE_URI -u AWS_CONTAINER_CREDENTIALS_FULL_URI \
+    -u AWS_CONTAINER_AUTHORIZATION_TOKEN -u AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE \
+    AWS_CONFIG_FILE=/dev/null BOTO_CONFIG=/dev/null AWS_EC2_METADATA_DISABLED=true \
+    AWS_SHARED_CREDENTIALS_FILE="$HOME/.config/afterglow/aws/credentials" \
+    AWS_PROFILE=afterglow-dev "$@"
+}
+
+with_afterglow_dev aws --region us-west-2 sts get-caller-identity
 ```
 
-The `afterglow` profile uses a `credential_process` that reads the project's
-private WSL `afterglow-source` login session, calls STS AssumeRole, and returns
-one-hour role credentials to its caller. It does not use `role_arn` /
-`source_profile` or the AWS CLI's standard on-disk assume-role cache.
+The ARN should end in `user/afterglow-wsl-dev`. New interactive zsh shells
+select `afterglow-dev` and the private WSL paths
+while honoring explicit caller settings. Browser Console visits use a
+separate sign-in.
+
+The older `afterglow` profile remains available. Its `credential_process`
+reads the project's private WSL `afterglow-source` login session, calls STS
+AssumeRole, and returns one-hour role credentials to its caller. It does not
+use `role_arn` / `source_profile` or the AWS CLI's standard on-disk assume-role
+cache.
 The separate `afterglow-source` profile uses `login_session`.
-When the browser-login session expires, refresh `afterglow-source` with
-the same config and cache.
+Only this older route needs browser renewal. If deliberately using it,
+refresh `afterglow-source` with the same config and cache:
 
 ```sh
 AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
@@ -183,34 +210,12 @@ this project session. On this host the default `.aws` path points to Windows;
 the explicit paths above keep project authentication inside WSL. Never copy
 tokens into this repository, logs or chat.
 
-The role's administrator
-permissions are for deployment tooling only; do not assign it to the website
-or API runtime. No hosting resources have been provisioned by this role setup.
-
 ### Hosted intent parsing (not yet deployed)
 
-The local preview makes paid Bedrock calls for recommendations. Run this
-command from the persistent worktree to start Uvicorn on port 8001 with the
-prepared preview catalog. Refresh an expired session with the
-[project login](#deployment-administrator-profile).
-
-```sh
-env -u AWS_DEFAULT_PROFILE -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY \
-  -u AWS_SESSION_TOKEN -u AWS_SECURITY_TOKEN -u AWS_WEB_IDENTITY_TOKEN_FILE \
-  -u AWS_ROLE_ARN -u AWS_ROLE_SESSION_NAME \
-  -u AWS_CONTAINER_CREDENTIALS_RELATIVE_URI -u AWS_CONTAINER_CREDENTIALS_FULL_URI \
-  -u AWS_CONTAINER_AUTHORIZATION_TOKEN -u AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE \
-  AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
-  AWS_SHARED_CREDENTIALS_FILE=/home/dukelee/.config/afterglow/aws/credentials \
-  AWS_LOGIN_CACHE_DIRECTORY=/home/dukelee/.config/afterglow/aws/login-cache \
-  AWS_PROFILE=afterglow AWS_REGION=us-west-2 INTENT_PROVIDER=bedrock \
-  DATABASE_URL="sqlite:///$PWD/.tools/preview/catalog.sqlite3" \
-  uv run uvicorn movie_db_llm.main:app --host 127.0.0.1 --port 8001 --reload
-```
-
-See [inference configuration](../README.md#inference-configuration) for provider
-settings and defaults, and the [API contract](../README.md#api) for failure
-responses. Hosted parsing uses one IAM-signed Mantle Chat Completions call
+To inspect the Bedrock fingerprint, use the preview catalog and the server's
+provider settings with the [configuration report](../README.md#inference-configuration).
+For failure responses, see the [API contract](../README.md#api).
+Bedrock parsing uses one IAM-signed Mantle Chat Completions call
 through the regional `/v1` route, at most 1,024 completion tokens (including
 reasoning), a bounded input context, and no automatic paid retries. It requires
 exactly one `movie_intent` function call and rejects truncated output, refusals,
@@ -219,8 +224,8 @@ Hosted examples pair each assistant function call with its tool reply. The
 prompt calls for integer years and empty lists for an unconstrained request.
 Ollama uses plain-JSON examples. Both providers share the extraction rules
 and the application's interpretation of year comparisons.
-Credentials refresh through the normal AWS credential chain; Lambda will use
-its execution role, not the local administrator profile. No API key is needed.
+The AWS SDK refreshes the hosted runtime's
+[execution-role credentials](decisions.md#product-scope).
 Catalog browsing, movie details and health remain available when inference fails.
 
 Deterministic regression checks run without AWS credentials or paid calls:

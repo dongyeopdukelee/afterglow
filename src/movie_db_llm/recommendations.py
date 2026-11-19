@@ -13,6 +13,7 @@ from pydantic import (
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, load_only, selectinload
 
+from movie_db_llm.catalog import catalog_genres
 from movie_db_llm.models import Movie, MovieGenre
 
 RECOMMENDATION_LIMIT = 10
@@ -89,11 +90,7 @@ def recommend_movies(
     query: str, session: Session, parser: IntentParser
 ) -> tuple[MovieIntent, Sequence[Movie]]:
     """Validate intent and combine filters using parameterized ORM queries."""
-    genres = list(
-        session.scalars(
-            select(MovieGenre.genre).distinct().order_by(MovieGenre.genre)
-        )
-    )
+    genres = catalog_genres(session)
     intent = parser.parse(query, genres)
     if intent.unsupported_constraints:
         raise UnsupportedRequestError(intent.unsupported_constraints)

@@ -4,12 +4,90 @@ The 2026-11-18 UTC checks exercised structured parsing with Bedrock in
 `us-west-2` and the locally served website and API. Earlier observations
 cover `us-east-1` and `us-west-2` on 2026-11-15.
 
-The WSL `afterglow` / `afterglow-source` profiles and new WSL zsh sessions
-were configured for Oregon. See [inference configuration](../README.md#inference-configuration)
-for application defaults and overrides. This setting does not move existing
-resources or resolve the historical runtime throttling below.
+At the time of those checks, the login-backed WSL profiles and new WSL zsh
+sessions were configured for Oregon. For application defaults and overrides,
+see [inference configuration](../README.md#inference-configuration). For the
+current profile and provisioning status, see
+[WSL authentication setup](website.md#deployment-administrator-profile).
 
 ## Latest live validation: structured intent passes
+
+### Persistent WSL authentication
+
+On 2026-11-19 UTC, the owner-selected `afterglow-wsl-dev` IAM user was created
+with `AdministratorAccess`, and its standard access key pair was saved directly
+to the private WSL `afterglow-dev` credentials profile without displaying it.
+STS returned the expected IAM user identity, policy readback confirmed the
+administrator attachment, and a fresh interactive zsh shell selected that
+identity without an explicit profile flag or browser login. The older
+login-backed profiles remain available separately.
+
+The reviewed WSL launcher then passed all ten live Bedrock acceptance cases
+with 363 catalog genres, 34,127 input tokens and 484 completion tokens. The
+batch's evaluator latency ranged from 260 to 473 ms (median 378.5 ms). All
+requests retained fingerprint
+`22ac008957900599c13afa15375186ff68050e71af5824d6c539ff1192380874`.
+These are observations from this batch, not a performance guarantee.
+
+The loopback website on port 5176 proxies to the API on 8003, which opens the
+imported catalog read-only. A real search for 1990s comedies returned ten
+matching films through the persistent identity. Public hosting remains pending;
+the hosted backend will use its execution role rather than this development key.
+
+### Shared local-development configuration
+
+These results were recorded with the earlier login-backed identity.
+
+The 2026-11-18 development-parity recheck passed all ten live cases with 363
+catalog genre labels. The batch reported 34,127 input tokens and 484 completion
+tokens. Per-case evaluator time ranged from 239 to 1,667 ms (median 385.5 ms),
+including parsing, scoring and request fingerprinting. Every case reported
+the request fingerprint
+`22ac008957900599c13afa15375186ff68050e71af5824d6c539ff1192380874`.
+These are measured results for this batch, not an accuracy or latency guarantee.
+
+A separate real-HTTP check through the then-current WSL launcher, Uvicorn,
+Bedrock and the read-only imported catalog returned ten correct cards for
+1990s comedies, post-2000 thrillers, and literal `dog` title searches. A detail
+request loaded the synopsis. Plot, OR, and greeting requests returned 422
+without cards.
+The temporary smoke API was stopped afterward.
+
+Public deployment and verification of the hosted API are still pending.
+
+### Repeat the HTTP acceptance cases
+
+Use the same imported CMU snapshot for local and hosted checks. In each
+environment, compare the fingerprint from the accepted live batch with the
+[inference-config report](../README.md#inference-configuration).
+The six POSTs below make separate Bedrock calls, including the searches the
+API rejects after parsing.
+Set `API_BASE` to the API under test. Send each JSON body verbatim to
+`POST /recommendations` with `Content-Type: application/json`. For example,
+the first request against the local API is
+
+```sh
+API_BASE=http://127.0.0.1:8000
+curl -sS -w '\nHTTP %{http_code}\n' "$API_BASE/recommendations" \
+  -H 'Content-Type: application/json' -d '{"query":"Comedies from the 1990s"}'
+```
+
+| JSON body | HTTP | Expected result on this snapshot |
+| --- | --- | --- |
+| `{"query":"Comedies from the 1990s"}` | 200 | Every card includes `Comedy` and has a release year from 1990 through 1999 inclusive. |
+| `{"query":"Thriller movies after 2000"}` | 200 | Every card includes `Thriller` and has a release year greater than 2000. |
+| `{"query":"Movies whose titles contain dog"}` | 200 | Every title contains the literal substring `dog`, ignoring case. |
+| `{"query":"90s comedy movies about dogs"}` | 422 | The detail identifies an unsupported constraint and the response has no `items`. |
+| `{"query":"Horror or Comedy movies"}` | 422 | The detail identifies an unsupported constraint and the response has no `items`. |
+| `{"query":"hello"}` | 422 | The detail asks for a supported filter and the response has no `items`. |
+
+Each 200 response must have ten distinct movie cards in `items`, ordered by
+title and ID. Each card contains exactly `id`, `title`, `release_year` and
+`genres`. Take the first comedy card's `id` and request `GET /movies/{id}`
+at the same `API_BASE`. Expect 200, the same four card fields and values, and
+a nonempty `synopsis` string.
+
+### Earlier validation of the selected model
 
 The owner's refreshed default login was valid for the expected account, but
 the project's separate WSL login cache had expired. Reusing that matching
@@ -25,10 +103,10 @@ plain-JSON examples, the strict parser rejected text-only replies and quoted
 years. See the [hosted prompt protocol](website.md#hosted-intent-parsing-not-yet-deployed).
 
 One passing ten-request batch reported 34,127 input tokens and 489 completion
-tokens. Parser-call latency was 287–1,250 ms, median 390 ms, including
-credential resolution and the network. This is a small development sample,
-not an SLA, a general accuracy guarantee, or total session spend. Other
-diagnostic calls are not included in those counts.
+tokens. Per-case evaluator time ranged from 287 to 1,250 ms (median 390 ms),
+including credential resolution, the network call and scoring. This is a small
+development sample, not an SLA, a general accuracy guarantee, or total session
+spend. Other diagnostic calls are not included in those counts.
 
 Real HTTP requests through Vite, Uvicorn, Bedrock and the imported SQLite
 catalog also passed: 1990s comedies, post-2000 thrillers and literal `dog`
@@ -56,8 +134,7 @@ AWS documents the model-specific endpoint/ID in the
 [GPT-OSS model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-oss-20b.html)
 and the separate APIs and quota systems in its
 [endpoint comparison](https://docs.aws.amazon.com/bedrock/latest/userguide/endpoints.html).
-The future runtime action is `bedrock-mantle:CreateInference`; the local
-administrator role is not the future Lambda execution role.
+The future runtime action is `bedrock-mantle:CreateInference`.
 
 The subsequent [structured-intent evaluation](#latest-live-validation-structured-intent-passes)
 exercised the application parser with the full catalog vocabulary.
@@ -173,8 +250,8 @@ by the proposed approach.
 
 ## Earlier Virginia control-plane checks
 
-- The WSL `afterglow` profile successfully assumes the project administrator
-  role. It is separate from the future application runtime identity.
+- The WSL `afterglow` profile successfully assumed the project administrator
+  role.
 - Bedrock lists Nova Micro and Titan Text Embeddings V2. Account-specific
   availability reports `AUTHORIZED`, agreement/entitlement `AVAILABLE`, and
   regional availability `AVAILABLE` for both candidates.
@@ -232,9 +309,8 @@ USD 0.1554048/month. Calculated with Python `Decimal`; no free-tier credits
 were subtracted. Actual input includes the catalog vocabulary and examples.
 
 This excludes initial catalog embeddings, storage, vector queries, hosting,
-logs, quotas, DNS, taxes, and abuse traffic. The complete deployment estimate
-and the USD 10/month budget check are **not yet verified**. In particular,
-this scenario is not a spending cap; server-enforced quotas remain required.
+logs, quotas, DNS, taxes, and abuse traffic. The full cost estimate and
+server-enforced quotas are still [release gates](#gates-before-continuing-to-public-release).
 
 ## Gates before continuing to public release
 
@@ -243,46 +319,38 @@ this scenario is not a spending cap; server-enforced quotas remain required.
    runtime rejection.
 2. Evaluate semantic synopsis requests against known films, including
    requests that also specify a genre, year or title filter.
-3. Validate vector-store filtering. Before provisioning, estimate parsing,
-   embedding, initial ingestion and hosting costs against the
-   [demo budget](decisions.md#product-scope).
+3. Validate vector-store filtering. Before provisioning, count development
+   and production parsing, embedding, ingestion, storage, and hosting costs
+   toward the [project budget](decisions.md#product-scope).
 4. Implement and verify fail-closed allowances before exposing paid searches
    to public visitors.
-5. Verify the public browser-to-catalog path, then select the custom domain.
+5. Repeat the [HTTP acceptance cases](#repeat-the-http-acceptance-cases)
+   against the deployed API and verify the public browser-to-catalog path
+   before selecting the custom domain.
 
-Do not publish a recommendation-quality pass, latency measurement, or token
-usage measurement until the corresponding live request has succeeded.
+A recommendation-quality pass requires a live response that meets the case's
+expected result.
 
 ## Repeat the bounded live parsing check
 
-Run this paid development check manually outside CI. The required `--live`
-flag authorizes up to ten model calls. The script exits nonzero on the first
-blocked or incorrect result. It checks decade bounds, all five year comparisons,
-literal title punctuation, unsupported plot/OR requests and an unconstrained
-greeting against fixed expected behavior.
-Each parsed result records latency and provider-reported usage, including
-reasoning tokens in completion usage. Missing usage is reported as null, not
-estimated. It is not an evaluation of semantic search.
-
-To repeat the catalog-backed run, set `DATABASE_URL` to the migrated,
-imported database. The command reads its distinct genre labels and uses the
-[private WSL profile](website.md#deployment-administrator-profile).
+After provisioning and verifying the
+[private WSL profile](website.md#deployment-administrator-profile), set
+`DATABASE_URL` to the migrated, imported catalog used by the API. Run the
+launcher manually in WSL outside CI.
+The `--check` option authorizes up to ten paid Bedrock calls.
 
 ```sh
-env -u AWS_DEFAULT_PROFILE -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY \
-  -u AWS_SESSION_TOKEN -u AWS_SECURITY_TOKEN -u AWS_WEB_IDENTITY_TOKEN_FILE \
-  -u AWS_ROLE_ARN -u AWS_ROLE_SESSION_NAME \
-  -u AWS_CONTAINER_CREDENTIALS_RELATIVE_URI -u AWS_CONTAINER_CREDENTIALS_FULL_URI \
-  -u AWS_CONTAINER_AUTHORIZATION_TOKEN -u AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE \
-  AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
-  AWS_SHARED_CREDENTIALS_FILE=/home/dukelee/.config/afterglow/aws/credentials \
-  AWS_LOGIN_CACHE_DIRECTORY=/home/dukelee/.config/afterglow/aws/login-cache \
-  AWS_PROFILE=afterglow AWS_REGION=us-west-2 \
-  uv run python scripts/check_bedrock.py --live --catalog
+scripts/dev-api.sh --check
 ```
 
-Omit `--catalog` to run the same cases with the fixed four-genre vocabulary.
-With `--catalog`, the evaluator opens SQLite read-only. It reports a blocked
-result before AWS client setup if the file or schema is missing, or if the
-catalog lacks any of the three genres the cases require (`Comedy`, `Horror`,
-and `Thriller`).
+The evaluator requires Bedrock as the active provider. It reads the catalog's
+distinct genre labels in read-only mode and stops before AWS client setup if
+the file, schema, or a required genre (`Comedy`, `Horror`, `Thriller`) is
+missing.
+
+The cases cover decade bounds, all five year comparisons, literal title
+punctuation, unsupported plot and OR requests, and a greeting. Each attempted
+parse records the batch fingerprint, parser latency, and provider-reported
+token counts, including usage returned with an incomplete response. Missing
+usage is recorded as `null`. The evaluator exits nonzero on the first blocked
+or incorrect result.

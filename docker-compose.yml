@@ -3,16 +3,18 @@ services:
     build: .
     environment:
       DATABASE_URL: sqlite:////app/data/movie_db.sqlite3
+      INTENT_PROVIDER:
+      AWS_REGION:
+      BEDROCK_MODEL_ID:
       OLLAMA_BASE_URL: http://ollama:11434
-      OLLAMA_MODEL: qwen3.5:2b
-    depends_on:
-      - ollama
+      OLLAMA_MODEL:
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - movie-db-data:/app/data
 
   ollama:
+    profiles: [offline]
     image: ollama/ollama:0.40.13
     environment:
       OLLAMA_NO_CLOUD: "1"

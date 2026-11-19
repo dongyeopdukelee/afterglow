@@ -27,11 +27,12 @@ with dogs in it" becoming grounded movie recommendations.
 
 ## 4. Structured retrieval — Complete
 
-- [x] Parse natural-language movie requests locally with Qwen3.5 2B via Ollama.
+- [x] Parse natural-language movie requests with the
+  [configured inference provider](../README.md#inference-configuration).
 - [x] Validate constrained genre, release-year, and title-keyword intent.
 - [x] Build catalog queries in the application and return up to 10 movie cards
   from `POST /recommendations`.
-- [x] Reject unsupported constraints and handle local model failures.
+- [x] Reject unsupported constraints and handle inference provider failures.
 
 ## 5. Semantic retrieval
 
@@ -58,8 +59,8 @@ Build on the completed structured-retrieval step above.
 - [x] Add the first local React/TypeScript website with browsing, structured
   recommendation input and full movie synopses, plus mobile/desktop tests.
 - [x] Verify the `afterglow` deployment role and configure a WSL-only profile.
-- [x] Add an optional hosted intent adapter with deterministic API/catalog
-  tests; see [provider configuration](../README.md#inference-configuration).
+- [x] Cover the Bedrock adapter and catalog retrieval with deterministic
+  [API tests](../README.md#tests-and-checks).
 - [x] Verify hosted structured intent against the imported catalog. See the
   [live results](aws-readiness.md#latest-live-validation-structured-intent-passes).
 - Evaluate embedding quality and verify parsing and embedding costs.

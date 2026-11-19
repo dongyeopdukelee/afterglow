@@ -29,8 +29,13 @@ when a decision is made, changed, or removed.
   release: structured catalog retrieval first, then semantic vector search.
 - The structured-retrieval step will use an LLM to parse a user request and
   the application to query the catalog database.
-- The local-development request-parsing LLM will be Qwen3.5 2B through Ollama
-  using the `qwen3.5:2b` model tag.
+- Normal local development and hosted deployment will use the same on-demand
+  Bedrock model and adapter for intent parsing. Keep the endpoint family,
+  region, prompts, intent schema, and inference settings with the model in
+  shared, version-controlled application configuration so local model-behavior
+  checks exercise the request path intended for deployment.
+- Ollama with Qwen is an explicit offline option. Model acceptance for the
+  hosted route requires a live check against Bedrock.
 - Structured request intent will support catalog genre labels, an optional
   release-year range, and title keywords.
 - Each recommendation request will return at most 10 movie cards.
@@ -49,6 +54,11 @@ when a decision is made, changed, or removed.
   queries from constrained parsed fields.
 - The vector-search step will combine semantic synopsis retrieval with the
   structured metadata filters.
+- When semantic retrieval is added, use the same embedding model and
+  compatible vector settings for queries and synopses in both development
+  and deployment. Record the embedding configuration and catalog version with
+  the index so retrieval evaluations use a known, compatible index. The parser
+  can use a different model.
 - User accounts, visitor-time external movie-data provider APIs, and
   LLM-generated recommendation explanations are deferred.
 - Afterglow will have a public React/TypeScript website, built with Vite.
@@ -78,31 +88,44 @@ when a decision is made, changed, or removed.
 - New AWS resources and configuration default to `us-west-2` (Oregon).
   An explicit region selection or a service-specific endpoint takes precedence.
   Existing resources stay in their original regions.
-- The public demo targets about 720 recommendation requests/month and a
-  $10/month recurring budget, excluding up to $20/year upfront for a custom
-  domain. The exact domain and registrar quote remain unselected.
-- Production inference will use on-demand Amazon Bedrock. Model selection for
-  public deployment requires accuracy and token-cost checks.
+- The owner is willing to spend up to $10/month on the project, including
+  development-time Bedrock calls, production inference, storage, and hosting.
+  Count cumulative usage across development and production toward this budget.
+  The public demo targets about 720 recommendation requests/month. The existing
+  separate allowance of up to $20/year upfront for a custom domain remains;
+  the exact domain and registrar quote remain unselected.
+- Routine costs below $1 do not need separate cost discussion or confirmation
+  while projected total project spending remains within the $10/month budget.
+  Repeated small charges still count toward the monthly total; flag expected
+  budget overruns.
+- Model selection for public deployment requires accuracy and token-cost checks.
 - Select hosted inference from existing account quotas; quota-increase requests
   are out of scope for the current deployment phase. A positive quota listing
   does not replace successful live invocation and quality checks.
-- Hosted intent extraction uses Bedrock Mantle Chat Completions, signed using
-  temporary IAM credentials. See [inference configuration](../README.md#inference-configuration)
-  for the current model and regional defaults.
-  It requires validated tool output, shared application-owned year semantics,
-  bounded input/output, and no silent fallback to another provider.
-  The [AWS readiness record](aws-readiness.md) tracks live results and the
-  remaining checks for public deployment.
+- Bedrock intent extraction uses Mantle Chat Completions. For defaults, see
+  [inference configuration](../README.md#inference-configuration).
+  Live results and deployment status are recorded in [AWS readiness](aws-readiness.md).
+- Bedrock intent extraction requires validated tool output, shared
+  application-owned year semantics, bounded input/output, and no silent
+  fallback to another provider. Keep deterministic regression tests separate
+  from bounded live Bedrock evaluations; use the production inference
+  configuration for those live evaluations and exercise the full application
+  request path. Record model/configuration identity, actual token usage, and
+  latency. Matching configuration reduces drift but is not a guarantee of
+  identical model responses.
 - The website will remain online when a conservative usage quota pauses
   recommendation searches. Budget alerts alone are not a spending cap.
 - Deployment will use the owner's existing AWS account without assuming signup
   credits. Lambda/API Gateway, S3/CloudFront and a read-only catalog snapshot
   are the target hosting approach; vector-storage compatibility and costs must
   be validated before provisioning.
-- Owner-authorized deployment administration uses the `afterglow` IAM role
-  with AWS's managed `AdministratorAccess` policy. Only the owner's existing
-  `AccountFullAccessRole` can assume it, using one-hour temporary sessions.
-  This is a deployment-tooling role, not the application's runtime identity.
+- The owner selected a long-lived IAM user access key with AWS's managed
+  `AdministratorAccess` policy for WSL development and administration across
+  AWS services. The owner accepts a credential without automatic expiry to
+  avoid recurring browser sign-in. Keep the login-backed profiles available
+  for separate use. The hosted API will use its own execution role. See
+  [WSL authentication setup](website.md#deployment-administrator-profile) for
+  the profile, credential handling, and provisioning status.
 
 ## Technology
 
@@ -127,5 +150,5 @@ when a decision is made, changed, or removed.
   `reports/health`, using existing Python checks and package build tooling.
   Report-only commits use the owner's verified account-associated author email
   and the workflow's GitHub token, without weakening branch protections.
-- Ollama will serve local model inference over HTTP. Docker Compose will run
-  it as a CPU service with persistent model storage; GPU setup is deferred.
+- The optional Docker Compose service runs Ollama on CPU with persistent
+  model storage. The API reaches it over HTTP. GPU setup is deferred.
