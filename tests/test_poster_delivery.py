@@ -1,5 +1,6 @@
 """HTTP/S3 boundary checks using real SDK requests and disposable movie data."""
 
+import gzip
 import io
 import json
 import threading
@@ -23,6 +24,8 @@ from movie_db_llm import poster_store as storage
 from movie_db_llm.database import configure_sqlite_connection
 from movie_db_llm.models import Base, Movie
 from movie_db_llm.recommendations import MovieIntent
+
+real_poster_index = posters.poster_index
 
 
 @pytest.fixture
@@ -194,6 +197,40 @@ def delivery(
         server.server_close()
         worker.join(timeout=3)
         engine.dispose()
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        b"not gzip",
+        gzip.compress(b"{}")[:-4],
+        gzip.compress(b"{}")[:10] + b"\x07" + b"\x00" * 10,
+    ],
+)
+def test_corrupt_packaged_index_omits_images_without_breaking_catalog(
+    delivery: PosterDelivery,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    payload: bytes,
+) -> None:
+    client, s3, _ = delivery
+    (tmp_path / "poster_index.json.gz").write_bytes(payload)
+
+    def resource_files(_package: str) -> Path:
+        return tmp_path
+
+    monkeypatch.setattr(posters, "files", resource_files)
+    monkeypatch.setattr(posters, "poster_index", real_poster_index)
+    posters.cached_poster_index.cache_clear()
+    try:
+        response = client.get("/movies/451/poster")
+        assert response.status_code == 503
+        assert response.json() == {"detail": "Poster temporarily unavailable."}
+        assert client.get("/movies").status_code == 200
+        assert client.get("/movies/451").json()["synopsis"] == "Story."
+        assert s3.calls == []
+    finally:
+        posters.cached_poster_index.cache_clear()
 
 
 def test_poster_uses_one_get_per_request_and_returns_verified_bytes(

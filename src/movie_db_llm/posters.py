@@ -7,6 +7,7 @@ from functools import lru_cache
 from hashlib import sha256
 from importlib.resources import files
 from threading import Lock
+from zlib import error as CompressionError
 
 _index_lock = Lock()
 MAX_POSTER_BYTES = 2_000_000
@@ -49,17 +50,22 @@ def poster_index() -> dict[str, PosterAsset]:
     # Cold page loads request twelve images concurrently. Avoid decompressing
     # twelve copies of the large metadata index before the first cache fill.
     with _index_lock:
-        return _load_poster_index()
+        return cached_poster_index()
 
 
 @lru_cache(maxsize=1)
-def _load_poster_index() -> dict[str, PosterAsset]:
+def cached_poster_index() -> dict[str, PosterAsset]:
     """Load the packaged metadata index; image bytes always come from S3."""
-    data = json.loads(
-        gzip.decompress(
-            files("movie_db_llm").joinpath("poster_index.json.gz").read_bytes()
+    try:
+        data = json.loads(
+            gzip.decompress(
+                files("movie_db_llm")
+                .joinpath("poster_index.json.gz")
+                .read_bytes()
+            )
         )
-    )
+    except (EOFError, CompressionError) as error:
+        raise ValueError("Invalid compressed poster index") from error
     if data["version"] != 1:
         raise ValueError("Unsupported poster index version")
     return {

@@ -65,11 +65,15 @@ def local_posters(directory: Path) -> Generator[posters.PosterAsset]:
         token = scope.set(tag)
         try:
             response = await call_next(request)
-            if (
-                tag.startswith("detail-")
-                and request.url.path == "/movies/1/poster"
-                and not request.url.query
-            ):
+            path = request.url.path
+            held_card = (
+                tag.startswith("detail-") and path == "/movies/1/poster"
+            ) or (
+                tag.startswith("stalled-")
+                and path.startswith("/movies/")
+                and path.endswith("/poster")
+            )
+            if held_card and not request.url.query:
                 await pending.setdefault(tag, asyncio.Event()).wait()
             return response
         finally:

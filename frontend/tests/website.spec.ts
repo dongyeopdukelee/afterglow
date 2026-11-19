@@ -114,6 +114,32 @@ test('each detail opening fetches its own poster while the card is pending', asy
   }
 });
 
+test('stalled posters leave browser connections for synopsis and page navigation', async ({ page }) => {
+  const tag = `stalled-${crypto.randomUUID()}`;
+  const counter = `/movies/_poster-fixture/${tag}`;
+  await page.setExtraHTTPHeaders({ 'X-Poster-Test': tag });
+  try {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('.movie-card')).toHaveCount(12);
+    await expect.poll(async () => (await page.request.get(counter)).json()).toBe(4);
+    for (const visit of [1, 2]) {
+      await page.getByRole('button', { name: /Film 00/ }).click();
+      const dialog = page.getByRole('dialog');
+      await expect(dialog).toContainText('The complete synopsis for film 00.', { timeout: 2000 });
+      await dialog.getByRole('button', { name: 'Close movie details' }).click();
+      if (visit === 1) {
+        await page.getByRole('button', { name: 'Next →', exact: true }).click();
+        await expect(page.getByRole('heading', { name: 'Film 12', exact: true })).toBeVisible({ timeout: 2000 });
+        await page.getByRole('button', { name: '← Previous', exact: true }).click();
+        await expect(page.getByRole('heading', { name: 'Film 00', exact: true })).toBeVisible({ timeout: 2000 });
+      }
+    }
+  } finally {
+    await page.request.post(`${counter}/release`);
+  }
+  await expect(page.locator('.movie-card img')).toHaveCount(12);
+});
+
 test('exhausted poster fetches leave the films usable without more image retries', async ({ page }) => {
   let requests = 0;
   await page.route(url => /^\/movies\/\d+\/poster$/.test(url.pathname), async route => {
@@ -123,7 +149,7 @@ test('exhausted poster fetches leave the films usable without more image retries
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Film 00', exact: true })).toBeVisible();
   await expect(page.locator('.movie-card .art-label')).toHaveCount(12);
-  expect(requests).toBe(12);
+  await expect.poll(() => requests).toBe(12);
   // The backend owns the three-attempt S3 cap. Rendering a failed image must
   // not start another retry loop in the browser.
   await page.getByRole('textbox').fill('a query');

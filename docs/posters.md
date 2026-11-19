@@ -12,7 +12,8 @@ title/year and a SHA-256 fingerprint of the source synopsis using the packaged
 checkout are never used as cross-catalog identities. Catalog lists and
 recommendations do not wait for image downloads or call S3 themselves.
 
-A full browse page eagerly requests all 12 poster slots. Recommendation
+A full browse page eagerly schedules all 12 poster slots, with at most four
+image downloads in flight so catalog requests retain browser connections. Recommendation
 pages follow the [API result limit](../README.md#api). Each matched poster
 normally makes one S3 GET with no preceding HEAD. Responses include
 `Cache-Control: no-store` so fresh page loads fetch again. An unmatched film
@@ -38,8 +39,6 @@ launcher defaults to the [existing project bucket](#stored-batch-and-costs)
 and accepts a nonempty `POSTER_BUCKET` override. Hosted deployment
 must configure its own execution role for `s3:GetObject` on this bucket's
 `posters/*` objects; it must not use the owner's local administrator key.
-Compose passes `POSTER_BUCKET` through when supplied. The container needs its
-own credentials for S3 delivery.
 All AWS authentication stays in the backend; no public bucket or browser
 credentials are required. Public hosting remains a separate milestone.
 
@@ -73,6 +72,9 @@ hash. Keep one reviewed image per joined identity when combining passes.
 Retain the final enriched JSON bytes to reproduce the same recorded checksum.
 
 The index includes the source manifest's checksum and is reproducibly gzipped.
+The build atomically replaces the destination after writing successfully;
+a failed rebuild leaves the previous index intact. A truncated package makes
+posters unavailable while catalog browsing remains usable.
 Keep the acquisition manifests, per-file provenance and verification reports
 with the private S3 batch. The repo contains metadata, not the bulk images.
 

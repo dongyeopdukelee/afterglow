@@ -3,9 +3,11 @@
 import argparse
 import gzip
 import json
+import os
 import re
 from hashlib import sha256
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 from movie_db_llm.posters import (
     MAX_POSTER_BYTES,
@@ -45,7 +47,20 @@ def build(manifest: Path, output: Path) -> int:
         "films": films,
     }
     payload = json.dumps(data, sort_keys=True, separators=(",", ":")).encode()
-    output.write_bytes(gzip.compress(payload, mtime=0))
+    temporary: Path | None = None
+    try:
+        with NamedTemporaryFile(
+            dir=output.parent, prefix=f".{output.name}.", delete=False
+        ) as stream:
+            temporary = Path(stream.name)
+            stream.write(gzip.compress(payload, mtime=0))
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary.chmod(0o644)
+        temporary.replace(output)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
     return len(films)
 
 

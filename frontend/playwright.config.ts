@@ -11,6 +11,6 @@ export default defineConfig({
   ],
   webServer: [
     { command: 'uv run python frontend/tests/server.py', cwd: '..', url: 'http://127.0.0.1:8000/health', reuseExistingServer: false },
-    { command: 'npm run dev -- --port 5173 --strictPort', url: 'http://127.0.0.1:5173', reuseExistingServer: false },
+    { command: 'npm run dev -- --port 5173 --strictPort', env: { AFTERGLOW_API_PROXY: 'http://127.0.0.1:8000' }, url: 'http://127.0.0.1:5173', reuseExistingServer: false },
   ],
 });

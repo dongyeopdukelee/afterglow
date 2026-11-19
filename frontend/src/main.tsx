@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { detail, request, results } from './api';
 import type { Detail, Intent, Movie } from './api';
 import { posterFor, posterUrl } from './posters';
+import { schedulePoster } from './poster-queue';
 import './style.css';
 
 const examples = ['Comedies from the 1990s', 'Thrillers released after 2000', 'Movies with love in the title'];
@@ -48,8 +49,25 @@ function MovieArtwork({ movie, hero = false, detailId }: { movie: Pick<Movie, 'i
   const query = detailId ? `?detail=${encodeURIComponent(detailId)}` : '';
   const url = hero ? (poster && posterUrl(poster)) : `/movies/${movie.id}/poster${query}`;
   const [failed, setFailed] = useState(false);
-  return url && !failed
-    ? <div className="art poster-art"><img src={url} alt={`${movie.title} (${movie.release_year ?? 'year unavailable'}) poster`} loading="eager" onError={() => setFailed(true)} /></div>
+  const [ready, setReady] = useState(false);
+  const finish = useRef<() => void>(() => {});
+  const image = useRef<HTMLImageElement | null>(null);
+  useEffect(() => {
+    if (hero) return;
+    setFailed(false);
+    setReady(false);
+    const cancel = schedulePoster(() => setReady(true));
+    finish.current = cancel;
+    return () => {
+      // React clears DOM refs before passive cleanup. Keep the element until
+      // here so leaving a page also cancels its native image request.
+      image.current?.removeAttribute('src');
+      image.current = null;
+      cancel();
+    };
+  }, [url, hero]);
+  return url && !failed && (hero || ready)
+    ? <div className="art poster-art"><img ref={element => { if (element) image.current = element; }} src={url} alt={`${movie.title} (${movie.release_year ?? 'year unavailable'}) poster`} loading="eager" onLoad={() => finish.current()} onError={() => { finish.current(); setFailed(true); }} /></div>
     : <FilmArtwork variant={movie.id} />;
 }
 

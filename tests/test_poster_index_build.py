@@ -69,3 +69,58 @@ def test_index_command_validates_batch_before_replacing_output(
     first = output.read_bytes()
     subprocess.run(command, cwd=ROOT, check=True, capture_output=True)
     assert output.read_bytes() == first
+
+
+def test_index_command_preserves_previous_output_on_disk_write_failure(
+    tmp_path: Path,
+) -> None:
+    """A real OS file-size limit interrupts the generated gzip write."""
+    digest = sha256(b"image").hexdigest()
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            [
+                {
+                    "title": f"Film {number}",
+                    "year": 2001,
+                    "status": "stored",
+                    "source_synopsis_sha256": sha256(b"Story.").hexdigest(),
+                    "filename": digest[:20] + ".jpg",
+                    "bytes": 5,
+                    "sha256": digest,
+                }
+                for number in range(200)
+            ]
+        )
+    )
+    output = tmp_path / "index.json.gz"
+    output.write_bytes(b"previous index")
+    wrapper = """
+import resource
+import runpy
+import signal
+import sys
+signal.signal(signal.SIGXFSZ, signal.SIG_IGN)
+resource.setrlimit(resource.RLIMIT_FSIZE, (512, 512))
+sys.argv = sys.argv[1:]
+runpy.run_path(sys.argv[0], run_name="__main__")
+"""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            wrapper,
+            str(ROOT / "scripts/build_poster_index.py"),
+            str(manifest),
+            str(output),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert output.read_bytes() == b"previous index"
+    assert sorted(path.name for path in tmp_path.iterdir()) == [
+        "index.json.gz",
+        "manifest.json",
+    ]
