@@ -274,15 +274,17 @@ for (const mode of ['unavailable', 'rejected'] as const) {
 }
 
 test('exhausted poster fetches leave the films usable without more image retries', async ({ page }) => {
-  let requests = 0;
+  const tag = `exhausted-${crypto.randomUUID()}`;
+  const counter = `/movies/_poster-fixture/${tag}`;
+  await page.setExtraHTTPHeaders({ 'X-Poster-Test': tag });
   const settled: URL[] = [];
-  page.on('requestfinished', request => {
-    const url = new URL(request.url());
-    if (/^\/movies\/\d+\/poster$/.test(url.pathname)) settled.push(url);
-  });
-  await page.route(url => /^\/movies\/\d+\/poster$/.test(url.pathname), async route => {
-    requests += 1;
-    await route.fulfill({ status: 503, json: { detail: 'Poster temporarily unavailable.' } });
+  const statuses: number[] = [];
+  page.on('response', response => {
+    const url = new URL(response.url());
+    if (/^\/movies\/\d+\/poster$/.test(url.pathname)) {
+      settled.push(url);
+      statuses.push(response.status());
+    }
   });
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Film 00', exact: true })).toBeVisible();
@@ -293,7 +295,7 @@ test('exhausted poster fetches leave the films usable without more image retries
   // The backend owns the three-attempt S3 cap. Rendering a failed image must
   // not start another retry loop in the browser.
   await page.getByRole('textbox').fill('a query');
-  expect(requests).toBe(12);
+  expect(await (await page.request.get(counter)).json()).toBe(36);
   await page.getByRole('button', { name: /Film 00/ }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toContainText('The complete synopsis for film 00.');
@@ -301,7 +303,8 @@ test('exhausted poster fetches leave the films usable without more image retries
   expect(settled[12].searchParams.has('detail')).toBe(true);
   await expect(dialog.locator('img')).toHaveCount(0);
   await expect(dialog.locator('.art-label')).toBeVisible();
-  expect(requests).toBe(13);
+  expect(statuses).toEqual(Array(13).fill(503));
+  expect(await (await page.request.get(counter)).json()).toBe(39);
 });
 
 test('visitor browses real API pages and reads a full synopsis', async ({ page }) => {

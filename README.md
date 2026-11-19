@@ -88,8 +88,7 @@ INTENT_PROVIDER=ollama POSTER_BUCKET= \
 ```
 
 To use Ollama while keeping S3 posters, run
-`INTENT_PROVIDER=ollama scripts/dev-api.sh`. The WSL launcher always selects
-the project S3 bucket.
+`INTENT_PROVIDER=ollama scripts/dev-api.sh`.
 
 An Ollama result does not establish acceptance for the Bedrock route, and
 provider failures never trigger an automatic switch.
@@ -99,8 +98,9 @@ provider failures never trigger an automatic switch.
 - `GET /health` reports whether the API is running.
 - `GET /movies/{movie_id}` returns a movie card and its full synopsis, or 404.
 - `GET /movies/{movie_id}/poster` fetches a matched poster from private S3.
-  It returns image bytes, 404 for an unmatched film or unconfigured bucket,
-  or 503 if the poster cannot be fetched or verified. See
+  It returns verified image bytes on success. Disabled delivery, unknown movie
+  IDs, and films without indexed posters return 404. Index read or decoding
+  errors and poster fetch or verification failures return 503. See
   [poster delivery](docs/posters.md#website-delivery).
 - `GET /movies` returns an ordered page of imported movie cards. It accepts
   `limit` (default 20, maximum 100) and `offset` (default 0) query parameters.

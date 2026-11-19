@@ -79,15 +79,15 @@ def local_posters(
         def parse_request(self) -> bool:
             if not super().parse_request():
                 return False
-            tag = self.headers.get("X-Poster-Test", "")
+            self.tag = self.headers.get("X-Poster-Test", "")
             signed = self.headers.get("Authorization", "").startswith(
                 "AWS4-HMAC-SHA256 Credential=fake-test-key/"
             )
             with lock:
-                calls[tag] += 1
+                calls[self.tag] += 1
                 arrival = (self.command, self.path, signed)
                 self.valid = (
-                    bool(tag)
+                    bool(self.tag)
                     and self.command == "GET"
                     and self.path in objects
                     and signed
@@ -99,6 +99,13 @@ def local_posters(
         def do_GET(self) -> None:
             if not self.valid:
                 self.send_error(403)
+                return
+            if self.tag.startswith("exhausted-"):
+                data = b"<Error><Code>SlowDown</Code></Error>"
+                self.send_response(503)
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
                 return
             data = objects[self.path]
             self.send_response(200)

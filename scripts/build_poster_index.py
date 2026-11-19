@@ -8,6 +8,7 @@ import re
 from hashlib import sha256
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from typing import Any, cast
 
 from movie_db_llm.posters import (
     MAX_POSTER_BYTES,
@@ -22,7 +23,7 @@ def build(manifest: Path, output: Path) -> int:
     if not isinstance(records, list):
         raise ValueError("Verified poster manifest must be a JSON array")
     films: dict[str, list[str | int]] = {}
-    for row in records:
+    for row in cast(list[dict[str, Any]], records):
         filename, size, digest = row["filename"], row["bytes"], row["sha256"]
         source_hash = row["source_synopsis_sha256"]
         if (

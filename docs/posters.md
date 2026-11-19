@@ -13,11 +13,12 @@ checkout are never used as cross-catalog identities. Catalog lists and
 recommendations do not wait for image downloads or call S3 themselves.
 
 A full browse page eagerly schedules all 12 poster slots. Three card download
-slots and one reserved detail slot leave browser connections available for
-catalog requests. The [Web Locks API](https://w3c.github.io/web-locks/) shares
+slots and one reserved detail slot limit concurrent poster downloads.
+The [Web Locks API](https://w3c.github.io/web-locks/) shares
 these slots across same-origin tabs where available, such as on localhost or
 HTTPS. When Web Locks is unavailable or acquisition fails, the page uses the
-same limits in its own queue. Recommendation pages follow the
+same limits in its own queue. The browser cancels queued and in-flight card
+downloads when leaving a results page. Recommendation pages follow the
 [API result limit](../README.md#api). Each matched poster
 normally makes one S3 GET with no preceding HEAD. Responses include
 `Cache-Control: no-store` so fresh page loads fetch again. An unmatched film
@@ -31,11 +32,11 @@ automatic retries and S3 region redirects are disabled for poster GETs.
 The retry covers the entire GET and body read, with small exponential jitter,
 two-second connection and three-second socket-read timeouts. Transient network,
 retryable service, truncation and checksum failures retry. Permanent errors
-stop early. Each attempt closes any response body it receives. The backend
-reads at most the expected size plus one byte, checks the size and SHA-256
-even when the response omits `Content-Length`, and serves the verified bytes
-as JPEG, PNG, or WebP. The expected size is capped at 2,000,000 bytes. When an
-image is unavailable, the browser shows
+stop early. For object streams returned by `GetObject`, the backend reads at
+most the expected size plus one byte and closes the stream after each attempt.
+It checks the size and SHA-256 even when the response omits `Content-Length`,
+then serves the verified bytes as JPEG, PNG, or WebP. The expected size is
+capped at 2,000,000 bytes. When an image is unavailable, the browser shows
 its abstract placeholder without adding a retry loop.
 
 Set `POSTER_BUCKET` for the backend. The poster client uses `us-west-2`
@@ -50,16 +51,22 @@ local development.
 All AWS authentication stays in the backend; no public bucket or browser
 credentials are required. Public hosting remains a separate milestone.
 
-The exact enriched manifest for the shipped index is kept in the project's
-ignored WSL files at
-`.tools/poster-catalog/manifest-65bd0f3bfa8a491493a9f4d1138ecea98ea22a68a85890107023d8ce0c5c329d.json`.
-It contains 39,290 verified records. Its SHA-256 is recorded as
-`source_manifest_sha256` in the shipped index. From the project root, verify
-the archived input checksum and rebuild with these commands.
+The exact enriched manifest for the shipped index is kept in the owner's
+ignored WSL archive at `.tools/poster-catalog/manifest-<sha256>.json`, where
+`<sha256>` is `source_manifest_sha256` from the shipped index. From the project
+root, verify the archived input checksum before rebuilding.
 
 ```sh
-manifest=.tools/poster-catalog/manifest-65bd0f3bfa8a491493a9f4d1138ecea98ea22a68a85890107023d8ce0c5c329d.json
-printf '%s  %s\n' '65bd0f3bfa8a491493a9f4d1138ecea98ea22a68a85890107023d8ce0c5c329d' "$manifest" \
+manifest_sha=$(python3 - <<'PY'
+import gzip
+import json
+
+with gzip.open("src/movie_db_llm/poster_index.json.gz", "rt") as index:
+    print(json.load(index)["source_manifest_sha256"])
+PY
+) &&
+manifest=".tools/poster-catalog/manifest-$manifest_sha.json" &&
+printf '%s  %s\n' "$manifest_sha" "$manifest" \
   | sha256sum --check &&
   uv run python scripts/build_poster_index.py "$manifest" src/movie_db_llm/poster_index.json.gz
 ```
@@ -82,9 +89,8 @@ The index includes the source manifest's checksum and is reproducibly gzipped.
 The build atomically replaces the destination after writing successfully;
 a failed rebuild leaves the previous index intact. A truncated package makes
 posters unavailable while catalog browsing remains usable.
-The per-pass acquisition manifests, provenance, and verification reports stay
-with the [private S3 batch](#stored-batch-and-costs). The repo contains
-metadata, not the bulk images.
+The [per-pass S3 reports](#stored-batch-and-costs) omit
+`source_synopsis_sha256`, which the builder requires.
 
 The Image credits section acknowledges Wikimedia Commons and includes TMDB's
 required notice and an unmodified approved logo downloaded from its official
@@ -196,8 +202,8 @@ Commons license records.
 
 `data/posters/sources.json` records the reviewed film/version/file choices.
 `src/movie_db_llm/posters.json` records the source page, author, image URL,
-license, SHA-256 checksum, and size. Both the API and website use this manifest.
-See the [API ordering rules](../README.md#api) for seeded discovery.
+license, SHA-256 checksum, and size. The website uses this manifest for the
+hero artwork. The API uses it for [seeded discovery](../README.md#api).
 
 `frontend/public/posters` contains the downloaded, content-addressed images.
 To add another poster to the bundled snapshot, review its source, version,

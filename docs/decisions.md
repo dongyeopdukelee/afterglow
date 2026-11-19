@@ -75,16 +75,9 @@ when a decision is made, changed, or removed.
   seed so films are not repeated or skipped. Expanding poster coverage leaves
   the [API ordering rules](../README.md#api) in place.
 - Store the bulk poster assets in private, encrypted S3 and ship only their
-  index with the backend. Fetch card and detail posters on demand through
-  the backend using the Oregon S3 endpoint. Ignore inherited endpoint URLs
-  for poster delivery. Keep the decorative hero artwork bundled and keep
-  acquisition separate from visitor requests. Schedule all page posters eagerly using
-  three card slots and one reserved detail slot to leave browser connections
-  for catalog operations. Share those slots across same-origin tabs through
-  Web Locks when available and use per-page slots if acquisition is unavailable.
-  Replace rebuilt indexes atomically.
-  See [poster sourcing and storage](posters.md)
-  for the delivery contract, index generation, and acquisition workflow.
+  index with the backend. Keep acquisition offline and decorative hero artwork
+  bundled. Serve catalog posters through the backend. See
+  [poster sourcing and storage](posters.md) for delivery and index generation.
 - New AWS resources and configuration default to `us-west-2` (Oregon).
   An explicit region selection or a service-specific endpoint takes precedence.
   Existing resources stay in their original regions.
