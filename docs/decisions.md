@@ -72,19 +72,29 @@ when a decision is made, changed, or removed.
   The wordmark is plain text, without a separate logo symbol. Interactive
   controls retain visible boundaries and keyboard focus indicators.
 - New visits shuffle the catalog with a per-visit seed; pagination keeps that
-  seed so films are not repeated or skipped. Verified poster matches appear
+  seed so films are not repeated or skipped. Reviewed starter films appear
   first, followed by the rest of the catalog. The unseeded API remains
   alphabetical and recommendation results keep their existing ordering.
-- Movie posters use a small, reviewed Wikimedia Commons snapshot instead of
-  visitor-time web lookups. See [poster sourcing and storage](posters.md) for
-  matching, provenance, bundled assets, private S3 storage, and fallback rules.
-  Hero film cards are not interactive.
-- Poster acquisition is expanding across the complete CMU catalog using
-  Wikimedia film identifiers and TMDB. Bulk downloads are an offline,
-  resumable storage job, separate from the website's bundled starter snapshot.
-  See [catalog-wide acquisition](posters.md#catalog-wide-acquisition) for
-  matching safeguards, checkpoint reconciliation, credential handling, and
-  the attribution required before displaying TMDB images.
+- Catalog cards and details fetch the acquired posters from private S3 through
+  `GET /movies/{id}/poster`. A full page eagerly loads its 12 poster slots;
+  each matched image normally makes one S3 GET, with no HEAD request or image
+  cache. The backend makes at most three total attempts, with bounded timeouts
+  and backoff, including failed/truncated body reads. Transient failures retry;
+  missing matches and permanent errors need no repeated request. Exhaustion
+  uses the existing abstract fallback without blocking catalog/search results.
+- The metadata-only poster index is packaged with the backend. Match exact
+  title, release year and the source synopsis fingerprint, independent of local
+  movie IDs; validate image size and SHA-256 before serving bytes. No downloaded
+  bulk image binaries are added to Git. Bucket/region are backend configuration,
+  and AWS credentials never reach the browser. Keep S3 private and encrypted.
+- The two static hero posters keep their bundled images and make no S3 calls.
+  Existing starter-film discovery priority and seeded pagination remain; bulk
+  poster availability applies to all catalog/search results. Hero film cards
+  are not interactive. TMDB's approved logo and notice appear in Image credits.
+- Poster acquisition remains an offline, resumable job using Wikimedia film
+  identifiers and TMDB; user requests never query those providers. See
+  [poster sourcing and storage](posters.md) for acquisition provenance, index
+  generation, S3 upload verification and delivery behavior.
 - New AWS resources and configuration default to `us-west-2` (Oregon).
   An explicit region selection or a service-specific endpoint takes precedence.
   Existing resources stay in their original regions.

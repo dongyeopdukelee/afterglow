@@ -43,11 +43,12 @@ function FilmArtwork({ variant = 0 }: { variant?: number }) {
   </div>;
 }
 
-function MovieArtwork({ movie, eager = false }: { movie: Pick<Movie, 'id' | 'title' | 'release_year'>; eager?: boolean }) {
-  const poster = posterFor(movie);
+function MovieArtwork({ movie, hero = false }: { movie: Pick<Movie, 'id' | 'title' | 'release_year'>; hero?: boolean }) {
+  const poster = hero ? posterFor(movie) : undefined;
+  const url = hero ? (poster && posterUrl(poster)) : `/movies/${movie.id}/poster`;
   const [failed, setFailed] = useState(false);
-  return poster && !failed
-    ? <div className="art poster-art"><img src={posterUrl(poster)} alt={`${movie.title} (${movie.release_year}) poster`} loading={eager ? 'eager' : 'lazy'} onError={() => setFailed(true)} /></div>
+  return url && !failed
+    ? <div className="art poster-art"><img src={url} alt={`${movie.title} (${movie.release_year ?? 'year unavailable'}) poster`} loading="eager" onError={() => setFailed(true)} /></div>
     : <FilmArtwork variant={movie.id} />;
 }
 
@@ -136,8 +137,8 @@ function App() {
         </div>
         <div className="hero-scene" aria-label="Films from the collection">
           <div className="scene-halo" />
-          <figure className="cinema-ticket ticket-back"><MovieArtwork movie={{ id: 15060, title: 'Metropolis', release_year: 1927 }} eager /><figcaption><strong>Metropolis</strong><span>1927 · Science fiction</span></figcaption></figure>
-          <figure className="cinema-ticket ticket-front"><MovieArtwork movie={{ id: 36695, title: 'Charade', release_year: 1963 }} eager /><figcaption><strong>Charade</strong><span>1963 · Mystery</span></figcaption></figure>
+          <figure className="cinema-ticket ticket-back"><MovieArtwork movie={{ id: 15060, title: 'Metropolis', release_year: 1927 }} hero /><figcaption><strong>Metropolis</strong><span>1927 · Science fiction</span></figcaption></figure>
+          <figure className="cinema-ticket ticket-front"><MovieArtwork movie={{ id: 36695, title: 'Charade', release_year: 1963 }} hero /><figcaption><strong>Charade</strong><span>1963 · Mystery</span></figcaption></figure>
         </div>
       </section>
       <section className="catalog" id="collection" tabIndex={-1} aria-label="Movie results" aria-busy={loading}>
@@ -154,7 +155,13 @@ function App() {
         {mode === 'browse' && !loading && !error && <nav className="pagination" aria-label="Catalog pages"><button disabled={offset === 0} onClick={() => void load(undefined, Math.max(0, offset - pageSize))}>← Previous</button><span>Page {Math.floor(offset / pageSize) + 1}</span><button disabled={movies.length < pageSize} onClick={() => void load(undefined, offset + pageSize)}>Next →</button></nav>}
       </section>
     </main>
-    <footer><div className="footer-top"><span className="brand">afterglow</span><p>Good films leave a little afterglow.</p></div><p className="attribution">Catalog and plot summaries: <a href="https://www.cs.cmu.edu/~ark/personas/" target="_blank" rel="noreferrer">CMU Movie Summary Corpus</a> · <a href="https://creativecommons.org/licenses/by-sa/3.0/us/" target="_blank" rel="noreferrer">CC BY-SA 3.0 US</a>. Posters from Wikimedia Commons; abstract artwork fills unmatched covers.</p>
+    <footer><div className="footer-top"><span className="brand">afterglow</span><p>Good films leave a little afterglow.</p></div><p className="attribution">Catalog and plot summaries: <a href="https://www.cs.cmu.edu/~ark/personas/" target="_blank" rel="noreferrer">CMU Movie Summary Corpus</a> · <a href="https://creativecommons.org/licenses/by-sa/3.0/us/" target="_blank" rel="noreferrer">CC BY-SA 3.0 US</a>.</p>
+      <section className="image-credits" aria-labelledby="image-credits-title">
+        <h2 id="image-credits-title">Image credits</h2>
+        <a href="https://www.themoviedb.org" target="_blank" rel="noreferrer"><img src="/credits/tmdb.svg" alt="TMDB" width="120" /></a>
+        <p>This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+        <p>Additional public-domain posters come from Wikimedia Commons. Abstract artwork fills unavailable covers.</p>
+      </section>
     </footer>
     {selected && <MovieDialog key={selected.id} movie={selected} close={() => setSelected(undefined)} />}
   </>;

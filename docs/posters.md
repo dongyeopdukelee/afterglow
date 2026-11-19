@@ -1,5 +1,60 @@
 # Movie poster snapshot
 
+## Website delivery
+
+The website now uses the catalog-wide collection for movie cards and detail
+views. The acquired batch contains 40,315 unique images covering 39,290 of the
+42,207 catalog movies. All batch images are stored under `posters/` in the
+private `afterglow-posters-144160833822-us-west-2` bucket. The two decorative
+hero films retain their bundled starter images.
+
+Each card loads `GET /movies/{movie_id}/poster`. The backend matches exact
+title/year and a SHA-256 fingerprint of the source synopsis using the packaged
+`src/movie_db_llm/poster_index.json.gz` index. Local IDs from an acquisition
+checkout are never used as cross-catalog identities. Catalog lists and
+recommendations do not wait for image downloads or call S3 themselves.
+
+A 12-card browse page eagerly requests all 12 poster slots. Each matched
+poster makes one normal S3 GET, without a preceding HEAD. Responses use
+`Cache-Control: no-store` so fresh page loads fetch again. Unmatched films
+return 404 without contacting S3. Poster failures affect only that image.
+
+The backend owns a three-attempt maximum, counting the first request. SDK
+automatic retries are disabled for this client to prevent multiplying the cap.
+The retry covers the entire GET and body read, with small exponential jitter,
+two-second connection and three-second socket-read timeouts. Transient network,
+429/5xx/throttling, truncation and checksum failures retry; permanent errors
+stop early. Each attempt closes its response body. Bytes are bounded to the
+verified expected size (at most 2 MB), checked against SHA-256, then returned
+with a raster content type. Failed posters return a generic 503, and the
+browser uses its abstract placeholder without adding another retry loop.
+
+Set `POSTER_BUCKET` and optionally `POSTER_REGION` (default `us-west-2`) for
+the backend. Without a bucket, images fall back without AWS calls. The WSL
+launcher selects the existing project bucket automatically. Hosted deployment
+must configure its own execution role for `s3:GetObject` on this bucket's
+`posters/*` objects; it must not use the owner's local administrator key.
+Compose passes the settings through but does not mount host credentials.
+All AWS authentication stays in the backend; no public bucket or browser
+credentials are required. Public hosting remains a separate milestone.
+
+Generate the compact metadata index from a verified acquisition manifest:
+
+```sh
+uv run python scripts/build_poster_index.py /path/to/poster-catalog/manifest.json \
+  src/movie_db_llm/poster_index.json.gz
+```
+
+The index includes the source manifest's checksum and is reproducibly gzipped.
+Keep the acquisition manifests, per-file provenance and verification reports
+with the private S3 batch. The repo contains metadata, not the bulk images.
+
+The Image credits section includes TMDB's required notice and an unmodified
+approved logo downloaded from its official attribution page:
+`https://www.themoviedb.org/assets/v4/logos/v2/blue_short-8e7b30f73a4020692ccca9c88bafe5dcb6f8a62a4c6bc55cd9ba82bb2cd95f6c.svg`.
+The logo is self-hosted at `frontend/public/credits/tmdb.svg`. See
+[TMDB's attribution requirements](https://developer.themoviedb.org/docs/faq).
+
 ## Catalog-wide acquisition
 
 The bundled website snapshot below is separate from the catalog-wide storage
@@ -89,15 +144,15 @@ with_afterglow_dev aws --region us-west-2 s3 cp .tools/tmdb-posters/coverage.jso
 ```
 
 These operational files and downloaded bulk assets are ignored by Git; the
-website continues using its bundled starter snapshot until display integration.
-Before displaying TMDB images, include its approved logo and required notice
-in an About/Credits section. TMDB images are not public-domain assets. See
+backend's packaged metadata index connects the verified batch to the website.
+TMDB's approved logo and required notice appear in the Image credits section.
+TMDB images are not public-domain assets. See
 [TMDB attribution and usage](https://developer.themoviedb.org/docs/faq) and
 [API rate limits](https://developer.themoviedb.org/docs/rate-limiting).
 
 ## Bundled website snapshot
 
-The first image batch contains 13 title-and-year matches from Wikimedia
+The decorative hero's starter image batch contains 13 title-and-year matches from Wikimedia
 Commons. The search candidates were reviewed rather than accepting the first
 search result: results included unrelated books, logos, and an AI-generated
 Nosferatu cover, which were excluded. These are source-identified public-domain
@@ -107,13 +162,13 @@ manifest and source files; the page does not include a separate credits panel.
 `data/posters/sources.json` records the reviewed film/version/file choices.
 `src/movie_db_llm/posters.json` records the source page, author, image URL,
 license, SHA-256 checksum, and size. Both the API and website use this manifest.
-The API matches exact title/year pairs rather than assuming local database
-identifiers are permanent or attaching an original's poster to a remake.
+The API retains those title/year pairs for its existing discovery priority.
+Bulk delivery uses the stronger title/year/synopsis identity described above.
 
 `frontend/public/posters` contains the downloaded, content-addressed images.
-Bundled copies make the local website reproducible and avoid visitor-time
-matching, Wikimedia availability, AWS credentials, or expiring signed URLs.
-Unmatched movies and failed image requests show the abstract CSS fallback.
+Bundled copies keep the decorative hero independent of image-service availability.
+Catalog cards and details use the S3 route above. Unmatched movies and failed
+image requests show the abstract CSS fallback.
 To add another poster, review its source/version/license first, add it to the
 sources file, then run from the repository root:
 
@@ -135,8 +190,7 @@ with_afterglow_dev \
 Restart the API after changing the manifest. Vite reloads its imported manifest
 and image references automatically. The importer uploads only images; upload
 the updated manifest separately to the same S3 prefix when updating the stored
-batch. A future public deployment can serve these objects through its frontend
-distribution; a public bucket is not needed.
+batch. A public bucket is not needed for the authenticated backend proxy.
 
 ## Stored batch and costs
 
@@ -148,8 +202,8 @@ it does not describe the bucket's later catalog-wide acquisitions. Stored
 batch reports, including those under `batches/wikimedia/` and `batches/tmdb/`,
 record coverage and provenance for the corresponding acquisition passes.
 The local operator record `.tools/poster-storage.json` records the exact
-bucket for this host; it contains no credentials. Local previews use the
-checked-in copies.
+bucket for the acquisition host; it contains no credentials. Local previews
+now fetch catalog posters through the private S3 backend; hero assets remain bundled.
 
 The bundled snapshot's poster files total **1,526,686 bytes**. The retrieved
 us-west-2 AWS price catalog version `20261109154310` lists S3 Standard at

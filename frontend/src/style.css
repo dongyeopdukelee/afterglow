@@ -109,6 +109,9 @@ h2 { font-size: 29px; font-weight: 650; line-height: 1.3; letter-spacing: -.04em
 .art-3 { --art-base: #ccd5ae; --art-light: #f4f7e8; --art-shade: #a3ad83; --art-ink: #58633e; }
 .poster-art { background: #e5e9d3; }
 .poster-art img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.image-credits { margin-top: 24px; font-size: 12px; }
+.image-credits h2 { font-size: 14px; margin-bottom: 12px; }
+.image-credits img { display: block; width: 120px; height: auto; margin-bottom: 12px; }
 .art-disc { position: absolute; width: 125px; height: 125px; top: 39px; left: calc(50% - 62px); border-radius: 50%; background: radial-gradient(circle at 29% 25%, var(--art-light), var(--art-base) 34%, var(--art-shade) 90%); box-shadow: 12px 14px 17px color-mix(in srgb, var(--art-shade) 65%, transparent), -7px -7px 15px color-mix(in srgb, var(--art-light) 80%, transparent); }
 .art-orbit { position: absolute; width: 185px; height: 185px; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--art-ink) 18%, transparent); top: 8px; left: calc(50% - 92px); transform: rotateX(55deg) rotate(-30deg); }
 .art-line { position: absolute; top: 17px; left: 17px; height: 20px; width: 1px; background: var(--art-ink); opacity: .55; }

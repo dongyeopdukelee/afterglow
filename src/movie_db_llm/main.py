@@ -3,15 +3,19 @@
 from typing import Annotated, Literal
 
 import uvicorn
+from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import case, func, select, tuple_
 from sqlalchemy.orm import Session, selectinload
 
+from movie_db_llm.config import POSTER_BUCKET
 from movie_db_llm.database import get_session
 from movie_db_llm.models import Movie
 from movie_db_llm.ollama import get_intent_parser
-from movie_db_llm.posters import POSTER_FILMS
+from movie_db_llm.poster_store import PosterUnavailableError, poster_store
+from movie_db_llm.posters import POSTER_FILMS, poster_for
 from movie_db_llm.recommendations import (
     IntentParser,
     InvalidModelResponseError,
@@ -125,6 +129,37 @@ def get_movie(
     return MovieDetail(
         **movie_card(movie).model_dump(), synopsis=movie.synopsis
     )
+
+
+@app.get("/movies/{movie_id}/poster", response_class=Response)
+def get_movie_poster(
+    movie_id: int,
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    """Fetch one matched private object on demand, with no cache or HEAD call."""
+    headers = {
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
+    }
+    movie = session.get(Movie, movie_id)
+    if movie is None or not POSTER_BUCKET:
+        raise HTTPException(404, "Poster unavailable.", headers=headers)
+    try:
+        asset = poster_for(movie.title, movie.release_year, movie.synopsis)
+        if asset is None:
+            raise HTTPException(404, "Poster unavailable.", headers=headers)
+        data = poster_store().fetch(asset)
+    except (
+        PosterUnavailableError,
+        BotoCoreError,
+        ClientError,
+        OSError,
+        ValueError,
+    ):
+        raise HTTPException(
+            503, "Poster temporarily unavailable.", headers=headers
+        ) from None
+    return Response(data, media_type=asset.media_type, headers=headers)
 
 
 @app.post("/recommendations")

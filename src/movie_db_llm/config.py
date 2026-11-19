@@ -11,3 +11,5 @@ AWS_REGION = environ.get("AWS_REGION", "us-west-2")
 BEDROCK_MODEL_ID = environ.get(
     "BEDROCK_MODEL_ID", "mistral.ministral-3-8b-instruct"
 )
+POSTER_BUCKET = environ.get("POSTER_BUCKET", "")
+POSTER_REGION = environ.get("POSTER_REGION", "us-west-2")

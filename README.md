@@ -91,6 +91,10 @@ provider failures never trigger an automatic switch.
 
 - `GET /health` reports whether the API is running.
 - `GET /movies/{movie_id}` returns a movie card and its full synopsis, or 404.
+- `GET /movies/{movie_id}/poster` fetches a matched poster from private S3.
+  It returns image bytes or a noncritical 404/503; the website shows its
+  abstract fallback if unavailable. Transient fetch/read failures have at
+  most three total attempts. See [poster delivery](docs/posters.md#website-delivery).
 - `GET /movies` returns an ordered page of imported movie cards. It accepts
   `limit` (default 20, maximum 100) and `offset` (default 0) query parameters.
   Without a seed, movies are ordered by title and identifier.

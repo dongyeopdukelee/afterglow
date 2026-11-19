@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 
 const comedyIntent = {
   genres: ['Comedy'], year_min: 1990, year_max: 1999,
@@ -64,6 +65,43 @@ test('hero films are static and a failed poster has an intentional fallback', as
     await expect(page.locator('.cinema-ticket .art')).toHaveCount(2);
   }
   await expect(page.getByText('For the love of film.', { exact: true })).toHaveCount(0);
+});
+
+test('a full page fetches twelve posters and a fresh page load fetches them again', async ({ page }) => {
+  const poster = await readFile(new URL('../public/posters/18601f3133cb00c8af58.jpg', import.meta.url));
+  const requests: string[] = [];
+  await page.route(/\/movies\/\d+\/poster$/, async route => {
+    requests.push(new URL(route.request().url()).pathname);
+    await route.fulfill({ status: 200, contentType: 'image/jpeg', body: poster, headers: { 'Cache-Control': 'no-store' } });
+  });
+  await page.goto('/');
+  await expect(page.locator('.movie-card img')).toHaveCount(12);
+  await expect.poll(() => page.locator('.movie-card img').evaluateAll(images => images.every(image => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0))).toBe(true);
+  expect(requests).toHaveLength(12);
+  expect(new Set(requests).size).toBe(12);
+  await page.reload();
+  await expect(page.locator('.movie-card img')).toHaveCount(12);
+  await expect.poll(() => page.locator('.movie-card img').evaluateAll(images => images.every(image => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0))).toBe(true);
+  expect(requests).toHaveLength(24);
+  await expect(page.getByRole('region', { name: 'Image credits' })).toContainText('This product uses the TMDB API but is not endorsed or certified by TMDB.');
+});
+
+test('exhausted poster fetches leave the films usable without more image retries', async ({ page }) => {
+  let requests = 0;
+  await page.route(/\/movies\/\d+\/poster$/, async route => {
+    requests += 1;
+    await route.fulfill({ status: 503, json: { detail: 'Poster temporarily unavailable.' } });
+  });
+  await page.goto('/');
+  await expect(page.getByRole('heading', { name: 'Film 00', exact: true })).toBeVisible();
+  await expect(page.locator('.movie-card .art-label')).toHaveCount(12);
+  expect(requests).toBe(12);
+  // The backend owns the three-attempt S3 cap. Rendering a failed image must
+  // not start another retry loop in the browser.
+  await page.getByRole('textbox').fill('a query');
+  expect(requests).toBe(12);
+  await page.getByRole('button', { name: /Film 00/ }).click();
+  await expect(page.getByRole('dialog')).toContainText('The complete synopsis for film 00.');
 });
 
 test('visitor browses real API pages and reads a full synopsis', async ({ page }) => {
