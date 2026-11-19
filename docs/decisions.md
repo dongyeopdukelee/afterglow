@@ -77,9 +77,10 @@ when a decision is made, changed, or removed.
 - Store the bulk poster assets in private, encrypted S3 and ship only their
   index with the backend. Fetch card and detail posters on demand through
   the backend. Keep the decorative hero artwork bundled and acquisition
-  separate from visitor requests. Schedule all page posters eagerly while
-  limiting image downloads to four at a time so stalled images leave browser
-  connections for catalog operations. Replace rebuilt indexes atomically.
+  separate from visitor requests. Schedule all page posters eagerly. Use Web
+  Locks to share three card slots and one reserved detail slot across tabs on
+  the same origin, leaving browser connections for catalog operations. Replace
+  rebuilt indexes atomically.
   See [poster sourcing and storage](posters.md)
   for the delivery contract, index generation, and acquisition workflow.
 - New AWS resources and configuration default to `us-west-2` (Oregon).

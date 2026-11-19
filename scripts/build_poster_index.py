@@ -19,6 +19,8 @@ from movie_db_llm.posters import (
 def build(manifest: Path, output: Path) -> int:
     source = manifest.read_bytes()
     records = json.loads(source)
+    if not isinstance(records, list):
+        raise ValueError("Verified poster manifest must be a JSON array")
     films: dict[str, list[str | int]] = {}
     for row in records:
         filename, size, digest = row["filename"], row["bytes"], row["sha256"]

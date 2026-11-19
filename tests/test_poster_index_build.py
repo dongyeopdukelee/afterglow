@@ -71,6 +71,29 @@ def test_index_command_validates_batch_before_replacing_output(
     assert output.read_bytes() == first
 
 
+@pytest.mark.parametrize("manifest_json", ["{}", '""', "null", "0", "false"])
+def test_index_command_rejects_non_array_manifests_before_replacement(
+    tmp_path: Path, manifest_json: str
+) -> None:
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(manifest_json)
+    output = tmp_path / "index.json.gz"
+    output.write_bytes(b"previous index")
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/build_poster_index.py"),
+            str(manifest),
+            str(output),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert output.read_bytes() == b"previous index"
+
+
 def test_index_command_preserves_previous_output_on_disk_write_failure(
     tmp_path: Path,
 ) -> None:

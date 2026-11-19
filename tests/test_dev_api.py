@@ -48,7 +48,7 @@ def test_launcher_keeps_project_auth_through_dotenv_loaders(
             def report(target):
                 env = {k: v for k, v in os.environ.items()
                        if k.startswith(('AWS_', 'BEDROCK_', 'INTENT_'))
-                       or k == 'BOTO_CONFIG'}
+                       or k in ('BOTO_CONFIG', 'POSTER_BUCKET')}
                 print(json.dumps([os.getcwd(), target, env]))
                 raise SystemExit(0)
 
@@ -111,6 +111,7 @@ def test_launcher_keeps_project_auth_through_dotenv_loaders(
         "BEDROCK_MODEL_ID": "explicit-model",
         "AWS_REGION": "us-east-2",
         "INTENT_PROVIDER": provider,
+        "POSTER_BUCKET": "stale-acquisition-bucket",
     }
     result = subprocess.run(
         command,
@@ -137,6 +138,7 @@ def test_launcher_keeps_project_auth_through_dotenv_loaders(
         "AWS_REGION": "us-east-2",
         "BEDROCK_MODEL_ID": "explicit-model",
         "INTENT_PROVIDER": provider,
+        "POSTER_BUCKET": "afterglow-posters-144160833822-us-west-2",
     }
 
 

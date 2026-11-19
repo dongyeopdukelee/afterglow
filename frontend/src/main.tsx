@@ -46,7 +46,8 @@ function FilmArtwork({ variant = 0 }: { variant?: number }) {
 
 function MovieArtwork({ movie, hero = false, detailId }: { movie: Pick<Movie, 'id' | 'title' | 'release_year'>; hero?: boolean; detailId?: string }) {
   const poster = hero ? posterFor(movie) : undefined;
-  const query = detailId ? `?detail=${encodeURIComponent(detailId)}` : '';
+  const isDetail = detailId !== undefined;
+  const query = isDetail ? `?detail=${encodeURIComponent(detailId)}` : '';
   const url = hero ? (poster && posterUrl(poster)) : `/movies/${movie.id}/poster${query}`;
   const [failed, setFailed] = useState(false);
   const [ready, setReady] = useState(false);
@@ -56,7 +57,7 @@ function MovieArtwork({ movie, hero = false, detailId }: { movie: Pick<Movie, 'i
     if (hero) return;
     setFailed(false);
     setReady(false);
-    const cancel = schedulePoster(() => setReady(true));
+    const cancel = schedulePoster(isDetail, () => setReady(true), () => setFailed(true));
     finish.current = cancel;
     return () => {
       // React clears DOM refs before passive cleanup. Keep the element until
@@ -65,7 +66,7 @@ function MovieArtwork({ movie, hero = false, detailId }: { movie: Pick<Movie, 'i
       image.current = null;
       cancel();
     };
-  }, [url, hero]);
+  }, [url, hero, isDetail]);
   return url && !failed && (hero || ready)
     ? <div className="art poster-art"><img ref={element => { if (element) image.current = element; }} src={url} alt={`${movie.title} (${movie.release_year ?? 'year unavailable'}) poster`} loading="eager" onLoad={() => finish.current()} onError={() => { finish.current(); setFailed(true); }} /></div>
     : <FilmArtwork variant={movie.id} />;

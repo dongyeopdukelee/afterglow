@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 from anyio.abc import BlockingPortal
 from anyio.to_thread import current_default_thread_limiter
+from botocore.response import StreamingBody
 from fastapi.testclient import TestClient
 from httpx import Client
 from sqlalchemy import create_engine, event
@@ -43,6 +44,7 @@ class FakeS3:
         self.data = data
         self.statuses: list[int] = []
         self.truncate = False
+        self.chunked = False
         self.corrupt = False
         self.calls: list[tuple[str, str]] = []
         self.redirect_region = False
@@ -65,6 +67,8 @@ def delivery(
     source = FakeS3(data)
 
     class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
         def do_GET(self) -> None:
             with source.lock:
                 source.calls.append((self.command, self.path))
@@ -81,7 +85,10 @@ def delivery(
             elif source.corrupt:
                 payload = b"x" * len(payload)
             self.send_response(status)
-            self.send_header("Content-Length", str(len(payload)))
+            if source.chunked:
+                self.send_header("Transfer-Encoding", "chunked")
+            else:
+                self.send_header("Content-Length", str(len(payload)))
             self.send_header("Connection", "close")
             if status == 301 and source.redirect_region:
                 self.send_header("x-amz-bucket-region", "us-east-1")
@@ -91,7 +98,11 @@ def delivery(
                     source.held.set()
                 source.release.wait(10)
             with suppress(BrokenPipeError, ConnectionResetError):
+                if source.chunked:
+                    self.wfile.write(f"{len(payload):x}\r\n".encode())
                 self.wfile.write(payload[:20] if source.truncate else payload)
+                if source.chunked and not source.truncate:
+                    self.wfile.write(b"\r\n0\r\n\r\n")
             self.close_connection = True
 
         def do_HEAD(self) -> None:
@@ -273,6 +284,38 @@ def test_a_stalled_body_can_recover_on_the_next_get(
     assert [method for method, _ in s3.calls] == ["GET", "GET"]
 
 
+@pytest.mark.parametrize("truncated", [False, True])
+def test_chunked_body_without_content_length_is_verified_and_closed(
+    delivery: PosterDelivery,
+    image: tuple[posters.PosterAsset, bytes],
+    monkeypatch: pytest.MonkeyPatch,
+    truncated: bool,
+) -> None:
+    client, s3, _ = delivery
+    s3.chunked = True
+    s3.truncate = truncated
+    closed: list[StreamingBody] = []
+    original_close = StreamingBody.close
+
+    def observe_close(body: StreamingBody) -> None:
+        original_close(body)
+        closed.append(body)
+
+    monkeypatch.setattr(StreamingBody, "close", observe_close)
+    response = client.get("/movies/451/poster")
+    if truncated:
+        assert response.status_code == 503
+        assert response.headers["cache-control"] == "no-store"
+        assert client.get("/movies").status_code == 200
+        assert client.get("/movies/451").json()["synopsis"] == "Story."
+    else:
+        assert response.status_code == 200
+        assert response.content == image[1]
+    attempts = 3 if truncated else 1
+    assert [method for method, _ in s3.calls] == ["GET"] * attempts
+    assert len(closed) == len({id(body) for body in closed}) == attempts
+
+
 @pytest.mark.parametrize("failure", ["service", "truncated", "checksum"])
 def test_three_failed_attempts_omit_poster_and_keep_catalog_available(
     delivery: PosterDelivery, failure: str
@@ -370,8 +413,6 @@ def test_partial_bodies_are_closed_before_retry(
 
     class TruncatedClient:
         def get_object(self, *, Bucket: str, Key: str) -> storage.S3Object:
-            from botocore.response import StreamingBody
-
             stream = io.BytesIO(data[:20])
             streams.append(stream)
             return {

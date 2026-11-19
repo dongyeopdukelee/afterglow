@@ -7,7 +7,7 @@ from functools import lru_cache
 from hashlib import sha256
 from threading import Lock
 from time import sleep
-from typing import Any, Protocol, TypedDict, cast
+from typing import Any, NotRequired, Protocol, TypedDict, cast
 
 import boto3
 from botocore.awsrequest import AWSResponse
@@ -27,7 +27,7 @@ _store_lock = Lock()
 
 class S3Object(TypedDict):
     Body: StreamingBody
-    ContentLength: int
+    ContentLength: NotRequired[int]
 
 
 class PosterS3Client(Protocol):
@@ -55,7 +55,7 @@ class PosterStore:
                 # Read before sending HTTP headers, so truncated streams can
                 # retry. Always close bodies, including invalid/oversized ones.
                 with closing(response["Body"]) as body:
-                    if response["ContentLength"] != asset.size:
+                    if response.get("ContentLength", asset.size) != asset.size:
                         raise PosterUnavailableError("Poster size mismatch")
                     data = body.read(asset.size + 1)
                 if (

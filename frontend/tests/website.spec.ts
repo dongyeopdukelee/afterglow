@@ -114,30 +114,56 @@ test('each detail opening fetches its own poster while the card is pending', asy
   }
 });
 
-test('stalled posters leave browser connections for synopsis and page navigation', async ({ page }) => {
+test('two tabs share three stalled card slots and keep detail and catalog requests available', async ({ page, context }) => {
   const tag = `stalled-${crypto.randomUUID()}`;
   const counter = `/movies/_poster-fixture/${tag}`;
-  await page.setExtraHTTPHeaders({ 'X-Poster-Test': tag });
+  await context.setExtraHTTPHeaders({ 'X-Poster-Test': tag });
+  const otherTab = await context.newPage();
   try {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('.movie-card')).toHaveCount(12);
-    await expect.poll(async () => (await page.request.get(counter)).json()).toBe(4);
-    for (const visit of [1, 2]) {
-      await page.getByRole('button', { name: /Film 00/ }).click();
-      const dialog = page.getByRole('dialog');
-      await expect(dialog).toContainText('The complete synopsis for film 00.', { timeout: 2000 });
+    await expect.poll(async () => (await page.request.get(counter)).json()).toBe(3);
+    await otherTab.goto('/?seed=2', { waitUntil: 'domcontentloaded' });
+    await expect(otherTab.locator('.movie-card')).toHaveCount(12, { timeout: 2000 });
+
+    for (const tab of [page, otherTab]) {
+      const card = tab.locator('.movie-card').first();
+      const title = await card.getByRole('heading').innerText();
+      await card.click();
+      const dialog = tab.getByRole('dialog');
+      await expect(dialog).toContainText(`The complete synopsis for ${title.toLowerCase()}.`, { timeout: 2000 });
+      await expect.poll(() => dialog.locator('img').evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
       await dialog.getByRole('button', { name: 'Close movie details' }).click();
-      if (visit === 1) {
-        await page.getByRole('button', { name: 'Next →', exact: true }).click();
-        await expect(page.getByRole('heading', { name: 'Film 12', exact: true })).toBeVisible({ timeout: 2000 });
-        await page.getByRole('button', { name: '← Previous', exact: true }).click();
-        await expect(page.getByRole('heading', { name: 'Film 00', exact: true })).toBeVisible({ timeout: 2000 });
-      }
     }
+    expect(await (await page.request.get(counter)).json()).toBe(5);
+
+    await otherTab.getByRole('button', { name: 'Next →', exact: true }).click();
+    await expect(otherTab.locator('.movie-card')).toHaveCount(2, { timeout: 2000 });
+    await otherTab.getByRole('button', { name: '← Previous', exact: true }).click();
+    await expect(otherTab.locator('.movie-card')).toHaveCount(12, { timeout: 2000 });
+    await otherTab.getByRole('textbox').fill('Film 13');
+    await otherTab.getByRole('button', { name: 'Find a film' }).click();
+    await expect(otherTab.locator('.movie-card h3')).toHaveText(['Film 13'], { timeout: 2000 });
+    expect(await (await page.request.get(counter)).json()).toBe(5);
+    await page.close();
+    await expect.poll(async () => (await otherTab.request.get(counter)).json()).toBe(6);
   } finally {
-    await page.request.post(`${counter}/release`);
+    await otherTab.request.post(`${counter}/release`);
   }
-  await expect(page.locator('.movie-card img')).toHaveCount(12);
+  await expect.poll(() => otherTab.locator('.movie-card img').evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+});
+
+test('artwork falls back when the browser cannot coordinate poster slots', async ({ page }) => {
+  await page.addInitScript(() => Object.defineProperty(navigator, 'locks', { value: undefined }));
+  const tag = `no-locks-${crypto.randomUUID()}`;
+  await page.setExtraHTTPHeaders({ 'X-Poster-Test': tag });
+  await page.goto('/');
+  await expect(page.locator('.movie-card .art-label')).toHaveCount(12);
+  await page.getByRole('button', { name: /Film 00/ }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('The complete synopsis for film 00.');
+  await expect(dialog.locator('.art-label')).toBeVisible();
+  expect(await (await page.request.get(`/movies/_poster-fixture/${tag}`)).json()).toBe(0);
 });
 
 test('exhausted poster fetches leave the films usable without more image retries', async ({ page }) => {

@@ -26,9 +26,10 @@ from starlette.middleware.base import RequestResponseEndpoint
 
 from movie_db_llm import config, posters
 from movie_db_llm.database import configure_sqlite_connection, get_session
-from movie_db_llm.main import app
+from movie_db_llm.main import app, get_intent_parser
 from movie_db_llm.models import Movie, MovieGenre
 from movie_db_llm.poster_store import poster_store
+from movie_db_llm.recommendations import MovieIntent
 
 
 @contextmanager
@@ -165,7 +166,20 @@ def run() -> None:
             with Session(engine) as session:
                 yield session
 
+        class FixtureParser:
+            def parse(self, query: str, genres: list[str]) -> MovieIntent:
+                return MovieIntent(
+                    genres=[],
+                    year_min=None,
+                    year_max=None,
+                    year_min_inclusive=True,
+                    year_max_inclusive=True,
+                    title_keywords=[query],
+                    unsupported_constraints=[],
+                )
+
         app.dependency_overrides[get_session] = test_session
+        app.dependency_overrides[get_intent_parser] = FixtureParser
         try:
             uvicorn.run(app, host="127.0.0.1", port=8000)
         finally:

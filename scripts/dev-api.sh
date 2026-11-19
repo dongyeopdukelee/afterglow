@@ -27,7 +27,7 @@ export AWS_CONFIG_FILE=/dev/null
 export AWS_SHARED_CREDENTIALS_FILE="$afterglow_aws_directory/credentials"
 export BOTO_CONFIG=/dev/null
 export AWS_EC2_METADATA_DISABLED=true
-export POSTER_BUCKET="${POSTER_BUCKET:-afterglow-posters-144160833822-us-west-2}"
+export POSTER_BUCKET=afterglow-posters-144160833822-us-west-2
 
 port=8000
 if [[ $# -eq 1 && $1 == --check ]]; then

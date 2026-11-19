@@ -12,8 +12,11 @@ title/year and a SHA-256 fingerprint of the source synopsis using the packaged
 checkout are never used as cross-catalog identities. Catalog lists and
 recommendations do not wait for image downloads or call S3 themselves.
 
-A full browse page eagerly schedules all 12 poster slots, with at most four
-image downloads in flight so catalog requests retain browser connections. Recommendation
+A full browse page eagerly schedules all 12 poster slots. Tabs on the same
+origin share three card download slots and one reserved detail slot so catalog
+requests retain browser connections. Poster scheduling uses the browser's
+[Web Locks API](https://w3c.github.io/web-locks/), which requires localhost or
+HTTPS. Browsers without Web Locks show the artwork fallback. Recommendation
 pages follow the [API result limit](../README.md#api). Each matched poster
 normally makes one S3 GET with no preceding HEAD. Responses include
 `Cache-Control: no-store` so fresh page loads fetch again. An unmatched film
@@ -28,16 +31,16 @@ The retry covers the entire GET and body read, with small exponential jitter,
 two-second connection and three-second socket-read timeouts. Transient network,
 retryable service, truncation and checksum failures retry. Permanent errors
 stop early. Each attempt closes any response body it receives. The backend
-reads at most the expected size plus one byte, checks the size and SHA-256,
-and serves the verified bytes as JPEG, PNG, or WebP. The expected size is
-capped at 2,000,000 bytes. When an image is unavailable, the browser shows
+reads at most the expected size plus one byte, checks the size and SHA-256
+even when the response omits `Content-Length`, and serves the verified bytes
+as JPEG, PNG, or WebP. The expected size is capped at 2,000,000 bytes. When an
+image is unavailable, the browser shows
 its abstract placeholder without adding a retry loop.
 
 Set `POSTER_BUCKET` for the backend. The poster client uses `us-west-2`
 (Oregon). Without a bucket, images fall back without AWS calls. The WSL
-launcher defaults to the [existing project bucket](#stored-batch-and-costs)
-and accepts a nonempty `POSTER_BUCKET` override. Hosted deployment
-must configure its own execution role for `s3:GetObject` on this bucket's
+launcher uses the [existing project bucket](#stored-batch-and-costs). Hosted
+deployment must configure its own execution role for `s3:GetObject` on this bucket's
 `posters/*` objects; it must not use the owner's local administrator key.
 All AWS authentication stays in the backend; no public bucket or browser
 credentials are required. Public hosting remains a separate milestone.
@@ -71,6 +74,7 @@ image SHA-256. Join to the delivery catalog on exact title, year, and synopsis
 hash. Keep one reviewed image per joined identity when combining passes.
 Retain the final enriched JSON bytes to reproduce the same recorded checksum.
 
+The builder requires the manifest to be a JSON array of verified records.
 The index includes the source manifest's checksum and is reproducibly gzipped.
 The build atomically replaces the destination after writing successfully;
 a failed rebuild leaves the previous index intact. A truncated package makes

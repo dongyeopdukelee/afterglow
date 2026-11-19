@@ -1,35 +1,33 @@
-// Leave HTTP/1.1 connections available for catalog and synopsis requests.
-const maximumDownloads = 4;
-type Download = { start: () => void; started: boolean; finished: boolean };
-const waiting: Download[] = [];
-let active = 0;
-let scheduled = false;
+const cardSlots = ['afterglow-poster-card-1', 'afterglow-poster-card-2', 'afterglow-poster-card-3'];
+const detailSlots = ['afterglow-poster-detail'];
 
-function drainSoon() {
-  if (scheduled) return;
-  scheduled = true;
+export function schedulePoster(detail: boolean, start: () => void, fail: () => void): () => void {
+  const waiting = new AbortController();
+  let release: () => void = () => {};
   queueMicrotask(() => {
-    scheduled = false;
-    while (active < maximumDownloads && waiting.length > 0) {
-      const download = waiting.shift()!;
-      download.started = true;
-      active += 1;
-      download.start();
+    if (waiting.signal.aborted) return;
+    const locks = navigator.locks;
+    if (!locks) {
+      fail();
+      return;
+    }
+    for (const slot of detail ? detailSlots : cardSlots) {
+      void locks.request(slot, { signal: waiting.signal }, () => {
+        if (waiting.signal.aborted) return;
+        waiting.abort();
+        return new Promise<void>(resolve => {
+          release = resolve;
+          start();
+        });
+      }).catch(() => {
+        if (waiting.signal.aborted) return;
+        waiting.abort();
+        fail();
+      });
     }
   });
-}
-
-export function schedulePoster(start: () => void): () => void {
-  const download = { start, started: false, finished: false };
-  waiting.push(download);
-  // Defer dispatch so React's development effect cleanup can cancel a queued
-  // mount before it starts a duplicate HTTP request.
-  drainSoon();
   return () => {
-    if (download.finished) return;
-    download.finished = true;
-    if (download.started) active -= 1;
-    else waiting.splice(waiting.indexOf(download), 1);
-    drainSoon();
+    waiting.abort();
+    release();
   };
 }
