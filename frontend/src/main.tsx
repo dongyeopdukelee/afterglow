@@ -57,7 +57,7 @@ function MovieArtwork({ movie, hero = false, detailId }: { movie: Pick<Movie, 'i
     if (hero) return;
     setFailed(false);
     setReady(false);
-    const cancel = schedulePoster(isDetail, () => setReady(true), () => setFailed(true));
+    const cancel = schedulePoster(isDetail, () => setReady(true));
     finish.current = cancel;
     return () => {
       // React clears DOM refs before passive cleanup. Keep the element until

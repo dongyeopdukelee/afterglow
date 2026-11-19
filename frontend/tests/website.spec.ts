@@ -1,10 +1,19 @@
 import { test, expect } from '@playwright/test';
+import type { Locator } from '@playwright/test';
 
 const comedyIntent = {
   genres: ['Comedy'], year_min: 1990, year_max: 1999,
   year_min_inclusive: true, year_max_inclusive: true,
   title_keywords: [], unsupported_constraints: [],
 };
+
+async function expectDecodedPosters(images: Locator, count: number) {
+  await expect.poll(() => images.evaluateAll((elements, expected) =>
+    elements.length === expected && elements.every(image =>
+      image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0
+    ), count
+  )).toBe(true);
+}
 
 // A shareable seed makes the real shuffled catalog reproducible. This worked
 // example places Film 00 first, Film 00–11 on page one, and Film 12–13 next.
@@ -80,8 +89,7 @@ test('a full page fetches twelve posters and a fresh page load fetches them agai
   for (const load of [1, 2]) {
     if (load === 1) await page.goto('/');
     else await page.reload();
-    await expect(page.locator('.movie-card img')).toHaveCount(12);
-    await expect.poll(() => page.locator('.movie-card img').evaluateAll(images => images.every(image => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0))).toBe(true);
+    await expectDecodedPosters(page.locator('.movie-card img'), 12);
     expect(await (await page.request.get(counter)).json()).toBe(load * 12);
     expect(responses).toHaveLength(load * 12);
     expect(new Set(responses.slice(-12).map(response => response.path)).size).toBe(12);
@@ -105,7 +113,7 @@ test('each detail opening fetches its own poster while the card is pending', asy
       await card.click();
       const dialog = page.getByRole('dialog');
       await expect(dialog).toContainText('The complete synopsis for film 00.');
-      await expect.poll(() => dialog.locator('img').evaluate(image => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+      await expectDecodedPosters(dialog.locator('img'), 1);
       expect(await (await page.request.get(counter)).json()).toBe(12 + opening);
       await dialog.getByRole('button', { name: 'Close movie details' }).click();
     }
@@ -132,7 +140,7 @@ test('two tabs share three stalled card slots and keep detail and catalog reques
       await card.click();
       const dialog = tab.getByRole('dialog');
       await expect(dialog).toContainText(`The complete synopsis for ${title.toLowerCase()}.`, { timeout: 2000 });
-      await expect.poll(() => dialog.locator('img').evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+      await expectDecodedPosters(dialog.locator('img'), 1);
       await dialog.getByRole('button', { name: 'Close movie details' }).click();
     }
     expect(await (await page.request.get(counter)).json()).toBe(5);
@@ -150,32 +158,55 @@ test('two tabs share three stalled card slots and keep detail and catalog reques
   } finally {
     await otherTab.request.post(`${counter}/release`);
   }
-  await expect.poll(() => otherTab.locator('.movie-card img').evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+  await expectDecodedPosters(otherTab.locator('.movie-card img'), 1);
 });
 
-test('artwork falls back when the browser cannot coordinate poster slots', async ({ page }) => {
-  await page.addInitScript(() => Object.defineProperty(navigator, 'locks', { value: undefined }));
-  const tag = `no-locks-${crypto.randomUUID()}`;
-  await page.setExtraHTTPHeaders({ 'X-Poster-Test': tag });
-  await page.goto('/');
-  await expect(page.locator('.movie-card .art-label')).toHaveCount(12);
-  await page.getByRole('button', { name: /Film 00/ }).click();
-  const dialog = page.getByRole('dialog');
-  await expect(dialog).toContainText('The complete synopsis for film 00.');
-  await expect(dialog.locator('.art-label')).toBeVisible();
-  expect(await (await page.request.get(`/movies/_poster-fixture/${tag}`)).json()).toBe(0);
-});
+for (const mode of ['unavailable', 'rejected'] as const) {
+  test(`local poster slots keep images available when Web Locks are ${mode}`, async ({ page }) => {
+    await page.addInitScript(mode => {
+      Object.defineProperty(navigator, 'locks', {
+        value: mode === 'unavailable' ? undefined : {
+          request: () => Promise.reject(new DOMException('Lock unavailable', 'SecurityError')),
+        },
+      });
+    }, mode);
+    const tag = `stalled-local-${crypto.randomUUID()}`;
+    const counter = `/movies/_poster-fixture/${tag}`;
+    await page.setExtraHTTPHeaders({ 'X-Poster-Test': tag });
+    try {
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+      await expect.poll(async () => (await page.request.get(counter)).json()).toBe(3);
+      await page.getByRole('button', { name: /Film 00/ }).click();
+      const dialog = page.getByRole('dialog');
+      await expect(dialog).toContainText('The complete synopsis for film 00.');
+      await expectDecodedPosters(dialog.locator('img'), 1);
+      expect(await (await page.request.get(counter)).json()).toBe(4);
+      await dialog.getByRole('button', { name: 'Close movie details' }).click();
+    } finally {
+      await page.request.post(`${counter}/release`);
+    }
+    await expectDecodedPosters(page.locator('.movie-card img'), 12);
+    expect(await (await page.request.get(counter)).json()).toBe(13);
+  });
+}
 
 test('exhausted poster fetches leave the films usable without more image retries', async ({ page }) => {
   let requests = 0;
+  const settled: URL[] = [];
+  page.on('requestfinished', request => {
+    const url = new URL(request.url());
+    if (/^\/movies\/\d+\/poster$/.test(url.pathname)) settled.push(url);
+  });
   await page.route(url => /^\/movies\/\d+\/poster$/.test(url.pathname), async route => {
     requests += 1;
     await route.fulfill({ status: 503, json: { detail: 'Poster temporarily unavailable.' } });
   });
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Film 00', exact: true })).toBeVisible();
+  await expect.poll(() => settled.length).toBe(12);
+  expect(new Set(settled.map(url => url.pathname)).size).toBe(12);
+  await expect(page.locator('.movie-card img')).toHaveCount(0);
   await expect(page.locator('.movie-card .art-label')).toHaveCount(12);
-  await expect.poll(() => requests).toBe(12);
   // The backend owns the three-attempt S3 cap. Rendering a failed image must
   // not start another retry loop in the browser.
   await page.getByRole('textbox').fill('a query');
@@ -183,6 +214,9 @@ test('exhausted poster fetches leave the films usable without more image retries
   await page.getByRole('button', { name: /Film 00/ }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toContainText('The complete synopsis for film 00.');
+  await expect.poll(() => settled.length).toBe(13);
+  expect(settled[12].searchParams.has('detail')).toBe(true);
+  await expect(dialog.locator('img')).toHaveCount(0);
   await expect(dialog.locator('.art-label')).toBeVisible();
   expect(requests).toBe(13);
 });
