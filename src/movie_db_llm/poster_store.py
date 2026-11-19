@@ -9,7 +9,7 @@ from threading import Lock
 from time import sleep
 from typing import Any, NotRequired, Protocol, TypedDict, cast
 
-import boto3
+from boto3 import Session
 from botocore.awsrequest import AWSResponse
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
@@ -113,7 +113,7 @@ def _raise_get_object_http_error(
 @lru_cache(maxsize=1)
 def cached_poster_store() -> PosterStore:
     """Reuse the SDK connection pool and let it refresh runtime credentials."""
-    client = boto3.Session().client(
+    client = Session().client(
         "s3",
         region_name="us-west-2",
         config=Config(
@@ -123,6 +123,7 @@ def cached_poster_store() -> PosterStore:
             connect_timeout=2,
             read_timeout=3,
             max_pool_connections=16,
+            ignore_configured_endpoint_urls=True,  # pyright: ignore[reportCallIssue]
         ),
     )
     client.meta.events.register_first(

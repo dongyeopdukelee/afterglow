@@ -225,11 +225,10 @@ curl 'http://127.0.0.1:8000/movies?limit=20&offset=0'
 Docker Compose stores the SQLite database in the `movie-db-data` named volume.
 The default API uses the same Bedrock application settings as the WSL launch.
 `INTENT_PROVIDER`, `AWS_REGION`, `BEDROCK_MODEL_ID`, and `OLLAMA_MODEL`
-overrides pass through when supplied. See
-[poster delivery](docs/posters.md#website-delivery) for the optional bucket
-setting. The image lacks the host's credential process and its paths, so
-configure container authentication separately.
-Use the WSL launcher for the authenticated local-development workflow above.
+overrides pass through when supplied. The Compose stack leaves S3 poster
+delivery disabled. Configure container authentication separately for Bedrock.
+Use the [WSL launcher](#local-development) for authenticated local development
+with S3 posters.
 
 For offline Docker inference, download the selected model once while online.
 Skip this step if the tag is already in the `ollama-models` volume.

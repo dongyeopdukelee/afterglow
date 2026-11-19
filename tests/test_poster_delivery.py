@@ -11,10 +11,14 @@ from hashlib import sha256
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from os import environ
 from pathlib import Path
+from typing import cast
 
 import pytest
 from anyio.abc import BlockingPortal
 from anyio.to_thread import current_default_thread_limiter
+from boto3 import Session as AWSSession
+from botocore.client import BaseClient
+from botocore.config import Config
 from botocore.response import StreamingBody
 from fastapi.testclient import TestClient
 from httpx import Client
@@ -42,44 +46,82 @@ def image() -> tuple[posters.PosterAsset, bytes]:
 
 
 class FakeS3:
-    def __init__(self, data: bytes) -> None:
+    def __init__(self, data: bytes, expected_path: str) -> None:
         self.data = data
+        self.expected_path = expected_path
         self.statuses: list[int] = []
         self.truncate = False
         self.chunked = False
         self.corrupt = False
-        self.calls: list[tuple[str, str]] = []
+        self.calls: list[tuple[str, str, bool]] = []
         self.redirect_region = False
         self.hold_calls = 0
         self.held = threading.Event()
         self.release = threading.Event()
         self.lock = threading.Lock()
 
+    def assert_gets(self, count: int) -> None:
+        assert self.calls == [("GET", self.expected_path, True)] * count
+
 
 type PosterDelivery = tuple[Client, FakeS3, BlockingPortal]
 
 
 @pytest.fixture
+def isolated_aws(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> Generator[None]:
+    for variable in tuple(environ):
+        if variable.startswith("AWS_") or variable == "BOTO_CONFIG":
+            monkeypatch.delenv(variable)
+    for variable in (
+        "AWS_CONFIG_FILE",
+        "AWS_SHARED_CREDENTIALS_FILE",
+        "BOTO_CONFIG",
+    ):
+        monkeypatch.setenv(variable, str(tmp_path / variable))
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "fake-test-key")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "fake-test-secret")
+    monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
+    monkeypatch.setenv("NO_PROXY", "127.0.0.1")
+    monkeypatch.setenv("no_proxy", "127.0.0.1")
+    storage.cached_poster_store.cache_clear()
+    yield
+    storage.cached_poster_store.cache_clear()
+
+
+@pytest.fixture
 def delivery(
+    isolated_aws: None,
     monkeypatch: pytest.MonkeyPatch,
     image: tuple[posters.PosterAsset, bytes],
     tmp_path: Path,
 ) -> Generator[PosterDelivery]:
     asset, data = image
-    source = FakeS3(data)
+    source = FakeS3(data, f"/test-posters/posters/{asset.filename}")
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
-        def do_GET(self) -> None:
-            if not self.headers.get("Authorization", "").startswith(
+        def parse_request(self) -> bool:
+            if not super().parse_request():
+                return False
+            self.signed = self.headers.get("Authorization", "").startswith(
                 "AWS4-HMAC-SHA256 Credential=fake-test-key/"
-            ):
+            )
+            with source.lock:
+                source.calls.append((self.command, self.path, self.signed))
+                self.attempt = len(source.calls)
+            return True
+
+        def do_GET(self) -> None:
+            if not self.signed:
                 self.send_error(403)
                 return
+            if self.path != source.expected_path:
+                self.send_error(404)
+                return
             with source.lock:
-                source.calls.append((self.command, self.path))
-                attempt = len(source.calls)
                 status = source.statuses.pop(0) if source.statuses else 200
             payload = source.data
             if status != 200:
@@ -100,8 +142,8 @@ def delivery(
             if status == 301 and source.redirect_region:
                 self.send_header("x-amz-bucket-region", "us-east-1")
             self.end_headers()
-            if 0 < attempt <= source.hold_calls:
-                if attempt == source.hold_calls:
+            if self.attempt <= source.hold_calls:
+                if self.attempt == source.hold_calls:
                     source.held.set()
                 source.release.wait(10)
             with suppress(BrokenPipeError, ConnectionResetError):
@@ -113,7 +155,6 @@ def delivery(
             self.close_connection = True
 
         def do_HEAD(self) -> None:
-            source.calls.append((self.command, self.path))
             self.send_error(403)
 
         def log_message(self, format: str, *args: object) -> None:
@@ -122,31 +163,30 @@ def delivery(
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     worker = threading.Thread(target=server.serve_forever, daemon=True)
     worker.start()
-    for variable in tuple(environ):
-        if variable.startswith("AWS_") or variable == "BOTO_CONFIG":
-            monkeypatch.delenv(variable)
-    for variable in (
-        "AWS_CONFIG_FILE",
-        "AWS_SHARED_CREDENTIALS_FILE",
-        "BOTO_CONFIG",
-    ):
-        monkeypatch.setenv(variable, str(tmp_path / variable))
-    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "fake-test-key")
-    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "fake-test-secret")
-    monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
-    monkeypatch.setenv(
-        "AWS_ENDPOINT_URL_S3", f"http://127.0.0.1:{server.server_port}"
-    )
-    monkeypatch.setenv("NO_PROXY", "127.0.0.1")
-    monkeypatch.setenv("no_proxy", "127.0.0.1")
     monkeypatch.setenv("AWS_MAX_ATTEMPTS", "9")
     monkeypatch.setattr(config, "POSTER_BUCKET", "test-posters")
+    sdk_session = AWSSession()
+    endpoint = f"http://127.0.0.1:{server.server_port}"
+
+    class LoopbackSession:
+        def client(
+            self, service_name: str, *, region_name: str, config: Config
+        ) -> BaseClient:
+            return sdk_session.client(
+                service_name,
+                region_name=region_name,
+                config=config,
+                endpoint_url=endpoint,
+            )
+
+    monkeypatch.setattr(storage, "Session", LoopbackSession)
+    s3_client = cast(BaseClient, storage.poster_store().client)
+    assert s3_client.meta.endpoint_url == endpoint
 
     def no_sleep(_delay: float) -> None:
         pass
 
     monkeypatch.setattr(storage, "sleep", no_sleep)
-    storage.cached_poster_store.cache_clear()
     identity = (
         "6457d8d5bd7786afa0772964304b45283322e826318539425cd8049ac430d988"
     )
@@ -211,11 +251,44 @@ def delivery(
     finally:
         source.release.set()
         main.app.dependency_overrides = previous
-        storage.cached_poster_store.cache_clear()
+        s3_client.close()
         server.shutdown()
         server.server_close()
         worker.join(timeout=3)
         engine.dispose()
+
+
+@pytest.mark.parametrize(
+    ("variable", "profile"),
+    [
+        ("AWS_ENDPOINT_URL_S3", ""),
+        ("AWS_ENDPOINT_URL", ""),
+        (None, "[default]\nendpoint_url = {url}\n"),
+        (
+            None,
+            "[default]\nservices = fixture\n"
+            "[services fixture]\ns3 =\n  endpoint_url = {url}\n",
+        ),
+    ],
+    ids=["service-env", "global-env", "global-profile", "service-profile"],
+)
+def test_poster_client_ignores_inherited_endpoint_urls(
+    isolated_aws: None,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    variable: str | None,
+    profile: str,
+) -> None:
+    url = "http://127.0.0.1:9"
+    if variable is None:
+        (tmp_path / "AWS_CONFIG_FILE").write_text(profile.format(url=url))
+    else:
+        monkeypatch.setenv(variable, url)
+    client = cast(BaseClient, storage.poster_store().client)
+    try:
+        assert client.meta.endpoint_url == "https://s3.us-west-2.amazonaws.com"
+    finally:
+        client.close()
 
 
 @pytest.mark.parametrize(
@@ -257,7 +330,7 @@ def test_poster_uses_one_get_per_request_and_returns_verified_bytes(
     image: tuple[posters.PosterAsset, bytes],
 ) -> None:
     client, s3, _ = delivery
-    asset, data = image
+    _, data = image
     for _ in range(2):
         response = client.get("/movies/451/poster")
         assert response.status_code == 200
@@ -265,7 +338,7 @@ def test_poster_uses_one_get_per_request_and_returns_verified_bytes(
         assert response.headers["content-type"] == "image/jpeg"
         assert response.headers["cache-control"] == "no-store"
         assert response.headers["x-content-type-options"] == "nosniff"
-    assert s3.calls == [("GET", f"/test-posters/posters/{asset.filename}")] * 2
+    s3.assert_gets(2)
 
 
 def test_transient_failure_can_succeed_on_third_and_last_attempt(
@@ -277,7 +350,7 @@ def test_transient_failure_can_succeed_on_third_and_last_attempt(
     response = client.get("/movies/451/poster")
     assert response.status_code == 200
     assert response.content == image[1]
-    assert len(s3.calls) == 3
+    s3.assert_gets(3)
 
 
 def test_a_stalled_body_can_recover_on_the_next_get(
@@ -289,7 +362,7 @@ def test_a_stalled_body_can_recover_on_the_next_get(
     response = client.get("/movies/451/poster")
     assert response.status_code == 200
     assert response.content == image[1]
-    assert [method for method, _ in s3.calls] == ["GET", "GET"]
+    s3.assert_gets(2)
 
 
 @pytest.mark.parametrize("truncated", [False, True])
@@ -320,7 +393,7 @@ def test_chunked_body_without_content_length_is_verified_and_closed(
         assert response.status_code == 200
         assert response.content == image[1]
     attempts = 3 if truncated else 1
-    assert [method for method, _ in s3.calls] == ["GET"] * attempts
+    s3.assert_gets(attempts)
     assert len(closed) == len({id(body) for body in closed}) == attempts
 
 
@@ -336,12 +409,9 @@ def test_three_failed_attempts_omit_poster_and_keep_catalog_available(
     assert response.status_code == 503
     assert response.json() == {"detail": "Poster temporarily unavailable."}
     assert response.headers["cache-control"] == "no-store"
-    assert (
-        len(s3.calls) == 3
-    )  # Real SDK requests, even with AWS_MAX_ATTEMPTS=9.
     assert client.get("/movies").status_code == 200
     assert client.get("/movies/451").json()["synopsis"] == "Story."
-    assert len(s3.calls) == 3
+    s3.assert_gets(3)
 
 
 def test_in_flight_posters_leave_catalog_workers_and_connections_free(
@@ -373,6 +443,7 @@ def test_in_flight_posters_leave_catalog_workers_and_connections_free(
         finally:
             s3.release.set()
         assert all(poster.result(3).status_code == 200 for poster in posters)
+    s3.assert_gets(2)
 
 
 @pytest.mark.parametrize("movie_id", [452, 453, 999])
@@ -390,7 +461,7 @@ def test_permanent_access_error_is_not_retried(
     client, s3, _ = delivery
     s3.statuses = [403] * 10
     assert client.get("/movies/451/poster").status_code == 503
-    assert len(s3.calls) == 1
+    s3.assert_gets(1)
 
 
 @pytest.mark.parametrize("with_region_hint", [False, True])
@@ -401,7 +472,7 @@ def test_redirect_neither_replays_get_nor_probes_bucket(
     s3.statuses = [503, 503, 301]
     s3.redirect_region = with_region_hint
     assert client.get("/movies/451/poster").status_code == 503
-    assert [method for method, _ in s3.calls] == ["GET"] * 3
+    s3.assert_gets(3)
 
 
 def test_unconfigured_bucket_omits_images_without_s3(

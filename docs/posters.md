@@ -39,8 +39,9 @@ image is unavailable, the browser shows
 its abstract placeholder without adding a retry loop.
 
 Set `POSTER_BUCKET` for the backend. The poster client uses `us-west-2`
-(Oregon). Without a bucket, images fall back without AWS calls. The WSL
-launcher always uses the [existing project bucket](#stored-batch-and-costs),
+(Oregon) and ignores endpoint URLs inherited from the environment or shared
+AWS configuration. Without a bucket, images fall back without AWS calls.
+The WSL launcher always uses the [existing project bucket](#stored-batch-and-costs),
 including when Ollama handles inference. For fully offline use, run the
 [standalone API with posters disabled](../README.md#optional-offline-inference).
 Hosted deployment must configure its own execution role for `s3:GetObject`

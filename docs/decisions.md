@@ -76,8 +76,9 @@ when a decision is made, changed, or removed.
   the [API ordering rules](../README.md#api) in place.
 - Store the bulk poster assets in private, encrypted S3 and ship only their
   index with the backend. Fetch card and detail posters on demand through
-  the backend. Keep the decorative hero artwork bundled and acquisition
-  separate from visitor requests. Schedule all page posters eagerly using
+  the backend using the Oregon S3 endpoint. Ignore inherited endpoint URLs
+  for poster delivery. Keep the decorative hero artwork bundled and keep
+  acquisition separate from visitor requests. Schedule all page posters eagerly using
   three card slots and one reserved detail slot to leave browser connections
   for catalog operations. Share those slots across same-origin tabs through
   Web Locks when available and use per-page slots if acquisition is unavailable.
