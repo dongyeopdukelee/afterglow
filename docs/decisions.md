@@ -125,7 +125,7 @@ when a decision is made, changed, or removed.
   avoid recurring browser sign-in. Keep the login-backed profiles available
   for separate use. The hosted API will use its own execution role. See
   [WSL authentication setup](website.md#deployment-administrator-profile) for
-  the target profile, credential handling, and provisioning status.
+  the profile, credential handling, and provisioning status.
 
 ## Technology
 

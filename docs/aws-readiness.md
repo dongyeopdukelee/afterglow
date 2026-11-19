@@ -12,6 +12,28 @@ current profile and provisioning status, see
 
 ## Latest live validation: structured intent passes
 
+### Persistent WSL authentication
+
+On 2026-11-19 UTC, the owner-selected `afterglow-wsl-dev` IAM user was created
+with `AdministratorAccess`, and its standard access key pair was saved directly
+to the private WSL `afterglow-dev` credentials profile without displaying it.
+STS returned the expected IAM user identity, policy readback confirmed the
+administrator attachment, and a fresh interactive zsh shell selected that
+identity without an explicit profile flag or browser login. The older
+login-backed profiles remain available separately.
+
+The reviewed WSL launcher then passed all ten live Bedrock acceptance cases
+with 363 catalog genres, 34,127 input tokens and 484 completion tokens. The
+batch's evaluator latency ranged from 260 to 473 ms (median 378.5 ms). All
+requests retained fingerprint
+`22ac008957900599c13afa15375186ff68050e71af5824d6c539ff1192380874`.
+These are observations from this batch, not a performance guarantee.
+
+The loopback website on port 5176 proxies to the API on 8003, which opens the
+imported catalog read-only. A real search for 1990s comedies returned ten
+matching films through the persistent identity. Public hosting remains pending;
+the hosted backend will use its execution role rather than this development key.
+
 ### Shared local-development configuration
 
 These results were recorded with the earlier login-backed identity.

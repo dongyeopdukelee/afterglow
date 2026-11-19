@@ -144,15 +144,19 @@ registration/renewal quote within the [selected budget](decisions.md#product-sco
 
 ### Deployment administrator profile
 
-The target WSL profile is `afterglow-dev`, backed by the `afterglow-wsl-dev`
-IAM user. Provisioning and live verification are pending a fresh owner
-sign-in. See the [project decisions](decisions.md#product-scope) for the
-choice of credential and permissions.
+The WSL profile is `afterglow-dev`, backed by the `afterglow-wsl-dev` IAM user
+with `AdministratorAccess`. Provisioning, policy attachment, STS identity,
+fresh-zsh defaults, and live Bedrock requests were verified on 2026-11-19 UTC.
+See [live validation](aws-readiness.md#persistent-wsl-authentication) and the
+[project decisions](decisions.md#product-scope) for evidence and the owner's
+choice of credential and permissions. This IAM key pair has no automatic
+expiry and does not depend on the browser-login session.
 
-The setup will use the private WSL directory `$HOME/.config/afterglow/aws/`
+The setup uses the private WSL directory `$HOME/.config/afterglow/aws/`
 for CLI configuration and the `credentials` file. The `[afterglow-dev]`
 section in `credentials` holds `aws_access_key_id` and `aws_secret_access_key`.
-Give only the local owner access to the file. Keep keys outside application
+The directory has mode `0700` and its config/credentials files have mode
+`0600`. Keep keys outside application
 code, frontend/Vite variables, Git, logs, and chat.
 
 The WSL launcher selects the `[afterglow-dev]` section of the private
@@ -160,7 +164,7 @@ The WSL launcher selects the `[afterglow-dev]` section of the private
 disables alternate credential sources and dotenv loading for uv and Uvicorn.
 [AWS credential precedence](https://docs.aws.amazon.com/cli/latest/topic/config-vars.html#credentials)
 
-After provisioning, define this function in your WSL shell to run commands
+Define this function in your WSL shell to run commands
 with the same profile and credentials file as the launcher. The function
 applies the settings only to the command it runs.
 
@@ -180,8 +184,8 @@ with_afterglow_dev() {
 with_afterglow_dev aws --region us-west-2 sts get-caller-identity
 ```
 
-The ARN should end in `user/afterglow-wsl-dev`. The planned defaults for new
-interactive zsh shells will select `afterglow-dev` and the private WSL paths
+The ARN should end in `user/afterglow-wsl-dev`. New interactive zsh shells
+select `afterglow-dev` and the private WSL paths
 while honoring explicit caller settings. Browser Console visits use a
 separate sign-in.
 
