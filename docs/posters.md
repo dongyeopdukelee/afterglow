@@ -6,11 +6,12 @@ The website uses the catalog-wide collection for browse and recommendation
 cards and detail views. The two non-interactive hero films use bundled artwork
 and make zero S3 requests. Visitor requests never call TMDB or Wikimedia.
 
-Each card loads `GET /movies/{movie_id}/poster`. The backend matches exact
-title/year and a SHA-256 fingerprint of the source synopsis using the packaged
-`src/movie_db_llm/poster_index.json.gz` index. Local IDs from an acquisition
-checkout are never used as cross-catalog identities. Catalog lists and
-recommendations do not wait for image downloads or call S3 themselves.
+Each card loads a poster through the [API](../README.md#api). The backend
+matches exact title/year and a SHA-256 fingerprint of the source synopsis
+using the packaged `src/movie_db_llm/poster_index.json.gz` index. Local IDs
+from an acquisition checkout are never used as cross-catalog identities.
+Catalog lists and recommendations do not wait for image downloads or call S3
+themselves.
 
 A full browse page eagerly schedules all 12 poster slots. Three card download
 slots and one reserved detail slot limit concurrent poster downloads.
@@ -51,10 +52,13 @@ local development.
 All AWS authentication stays in the backend; no public bucket or browser
 credentials are required. Public hosting remains a separate milestone.
 
-The exact enriched manifest for the shipped index is kept in the owner's
-ignored WSL archive at `.tools/poster-catalog/manifest-<sha256>.json`, where
-`<sha256>` is `source_manifest_sha256` from the shipped index. From the project
-root, verify the archived input checksum before rebuilding.
+### Rebuild the delivery index
+
+To reproduce the shipped index, use the owner's archived copy of the enriched
+manifest at `.tools/poster-catalog/manifest-<sha256>.json`, where `<sha256>` is
+`source_manifest_sha256` from the shipped index. If the archive is missing from
+your checkout, obtain the checksum-matched file from the batch owner. From the
+project root, verify the archived input before rebuilding.
 
 ```sh
 manifest_sha=$(python3 - <<'PY'
@@ -75,14 +79,15 @@ Restart the API after a successful rebuild so it loads the new index. The
 running process caches the mappings, and the WSL launcher's Python reload
 watcher does not watch the gzip file.
 
-To regenerate the enriched input from older acquisition reports, use each
-pass's original catalog snapshot. For each verified stored row, look up its
-`movie_id` in that source catalog, require the row's exact title and year to
-match, and add `source_synopsis_sha256` as the SHA-256 of the full, unmodified
-synopsis encoded as UTF-8. Preserve the verified filename, byte count, and
-image SHA-256. Join to the delivery catalog on exact title, year, and synopsis
-hash. Keep one reviewed image per joined identity when combining passes.
-Retain the final enriched JSON bytes to reproduce the same recorded checksum.
+To assemble an enriched input for a new index from acquisition reports, use
+each pass's original catalog snapshot. Look up each verified stored row's
+`movie_id` in that catalog, require the row's exact title and year to match,
+and add `source_synopsis_sha256` as the SHA-256 of the full, unmodified synopsis
+encoded as UTF-8. Preserve the verified filename, byte count, and image SHA-256.
+Join to the delivery catalog on exact title, year, and synopsis hash. Keep one
+reviewed image per joined identity when combining passes. Pass the new manifest
+path as the first argument to `scripts/build_poster_index.py` and retain those
+exact JSON bytes for future rebuilds.
 
 The builder requires the manifest to be a JSON array of verified records.
 The index includes the source manifest's checksum and is reproducibly gzipped.
@@ -91,6 +96,8 @@ a failed rebuild leaves the previous index intact. A truncated package makes
 posters unavailable while catalog browsing remains usable.
 The [per-pass S3 reports](#stored-batch-and-costs) omit
 `source_synopsis_sha256`, which the builder requires.
+
+### Image credits
 
 The Image credits section acknowledges Wikimedia Commons and includes TMDB's
 required notice and an unmodified approved logo downloaded from its official
@@ -187,7 +194,8 @@ with_afterglow_dev aws --region us-west-2 s3 cp .tools/tmdb-posters/coverage.jso
 ```
 
 These operational files and downloaded bulk assets are ignored by Git. After
-verifying the uploaded objects, follow the [index build steps](#website-delivery).
+verifying the uploaded objects, use the new enriched manifest to
+[build the delivery index](#rebuild-the-delivery-index).
 TMDB images are not public-domain assets. See
 [API rate limits](https://developer.themoviedb.org/docs/rate-limiting).
 

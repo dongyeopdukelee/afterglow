@@ -120,11 +120,14 @@ These browser paths and extracted official Ubuntu libraries are temporary host
 setup, not repository dependencies.
 
 Browser tests run real Vite and FastAPI processes with an isolated, migrated
-SQLite fixture; ports 8000 and 5173 must be free. Recommendation response
-fixtures exercise the browser API contract, not model accuracy. Both desktop
-and mobile layouts cover browsing, pagination, full synopses, interpreted
-filters, empty/malformed responses and 422/429/503 recovery. Browser downloads
-and test fixtures are development-only, not shipped to visitors.
+SQLite fixture and a loopback S3 fixture using fake credentials. The default
+config needs ports 8000 and 5173. If using an alternate Vite port, keep its
+`AFTERGLOW_API_PROXY` pinned to the fixture API at `http://127.0.0.1:8000`.
+Recommendation response fixtures exercise the browser API contract with scripted
+results. Both desktop and mobile layouts cover browsing, pagination, full
+synopses, interpreted filters, empty/malformed responses and 422/429/503 recovery.
+Poster checks cover reloads, independent detail requests and fallback after
+retries are exhausted. Browser downloads and test fixtures are development-only.
 Keyboard coverage also rapidly closes and reopens the same synopsis, using
 both the close button and Escape while preserving focus on the invoking card.
 
@@ -242,4 +245,4 @@ paging. A `?seed=332` URL makes a visit reproducible. See the
 [API contract](../README.md#api) for ordering.
 
 The catalog attribution remains visible. See
-[poster delivery and Image credits](posters.md#website-delivery).
+[Image credits](posters.md#image-credits) for poster attribution.
