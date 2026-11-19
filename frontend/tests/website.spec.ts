@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import type { Locator } from '@playwright/test';
+import type { Locator, Request } from '@playwright/test';
 
 const comedyIntent = {
   genres: ['Comedy'], year_min: 1990, year_max: 1999,
@@ -160,6 +160,52 @@ test('two tabs share three stalled card slots and keep detail and catalog reques
   }
   await expectDecodedPosters(otherTab.locator('.movie-card img'), 1);
 });
+
+for (const mode of ['shared', 'local'] as const) {
+  test(`pagination aborts stalled card requests with ${mode} poster slots`, async ({ page }) => {
+    if (mode === 'local') {
+      await page.addInitScript(() => Object.defineProperty(navigator, 'locks', { value: undefined }));
+    }
+    const tag = `stalled-pagination-${crypto.randomUUID()}`;
+    const counter = `/movies/_poster-fixture/${tag}`;
+    await page.setExtraHTTPHeaders({ 'X-Poster-Test': tag });
+    const cardRequests: Request[] = [];
+    const aborted: Request[] = [];
+    page.on('request', request => {
+      const url = new URL(request.url());
+      if (request.resourceType() === 'image' && /^\/movies\/\d+\/poster$/.test(url.pathname) && !url.search) {
+        cardRequests.push(request);
+      }
+    });
+    page.on('requestfailed', request => {
+      if (cardRequests.includes(request) && request.failure()?.errorText === 'net::ERR_ABORTED') {
+        aborted.push(request);
+      }
+    });
+    try {
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+      await expect.poll(async () => (await page.request.get(counter)).json()).toBe(3);
+      expect(cardRequests).toHaveLength(3);
+      expect(aborted).toHaveLength(0);
+
+      const originalDocument = await page.evaluateHandle(() => document);
+      await page.getByRole('button', { name: 'Next →', exact: true }).click();
+      await expect(page.locator('.movie-card h3')).toHaveText(['Film 12', 'Film 13']);
+      expect(await originalDocument.evaluate(original => original === document)).toBe(true);
+      await expect.poll(async () => (await page.request.get(counter)).json()).toBe(5);
+      await expect.poll(() => aborted.map(request => request.url()).sort()).toEqual(
+        cardRequests.slice(0, 3).map(request => request.url()).sort()
+      );
+      expect(cardRequests.slice(3).map(request => new URL(request.url()).pathname).sort()).toEqual([
+        '/movies/13/poster', '/movies/14/poster',
+      ]);
+    } finally {
+      await page.request.post(`${counter}/release`);
+    }
+    await expectDecodedPosters(page.locator('.movie-card img'), 2);
+    expect(await (await page.request.get(counter)).json()).toBe(5);
+  });
+}
 
 for (const mode of ['unavailable', 'rejected'] as const) {
   test(`local poster slots keep images available when Web Locks are ${mode}`, async ({ page }) => {

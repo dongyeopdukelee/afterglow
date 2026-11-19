@@ -46,6 +46,11 @@ def local_posters(directory: Path) -> Generator[posters.PosterAsset]:
 
     class S3Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
+            if not self.headers.get("Authorization", "").startswith(
+                "AWS4-HMAC-SHA256 Credential=fake-test-key/"
+            ):
+                self.send_error(403)
+                return
             if self.path != f"/test-posters/posters/{filename}":
                 self.send_error(404)
                 return
@@ -99,18 +104,18 @@ def local_posters(directory: Path) -> Generator[posters.PosterAsset]:
         request.headers["X-Poster-Test"] = scope.get()
 
     with ThreadingHTTPServer(("127.0.0.1", 0), S3Handler) as server:
-        for variable in ("AWS_CONFIG_FILE", "AWS_SHARED_CREDENTIALS_FILE"):
-            environ[variable] = str(directory / variable)
+        for variable in tuple(environ):
+            if variable.startswith("AWS_") or variable == "BOTO_CONFIG":
+                del environ[variable]
         for variable in (
-            "AWS_PROFILE",
-            "AWS_DEFAULT_PROFILE",
-            "AWS_SESSION_TOKEN",
-            "AWS_SECURITY_TOKEN",
+            "AWS_CONFIG_FILE",
+            "AWS_SHARED_CREDENTIALS_FILE",
+            "BOTO_CONFIG",
         ):
-            environ.pop(variable, None)
+            environ[variable] = str(directory / variable)
         environ["AWS_ACCESS_KEY_ID"] = "fake-test-key"
         environ["AWS_SECRET_ACCESS_KEY"] = "fake-test-secret"
-        environ["AWS_IGNORE_CONFIGURED_ENDPOINT_URLS"] = "false"
+        environ["AWS_EC2_METADATA_DISABLED"] = "true"
         environ["AWS_ENDPOINT_URL_S3"] = (
             f"http://127.0.0.1:{server.server_port}"
         )

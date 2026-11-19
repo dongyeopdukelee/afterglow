@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
 from hashlib import sha256
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from os import environ
 from pathlib import Path
 
 import pytest
@@ -71,6 +72,11 @@ def delivery(
         protocol_version = "HTTP/1.1"
 
         def do_GET(self) -> None:
+            if not self.headers.get("Authorization", "").startswith(
+                "AWS4-HMAC-SHA256 Credential=fake-test-key/"
+            ):
+                self.send_error(403)
+                return
             with source.lock:
                 source.calls.append((self.command, self.path))
                 attempt = len(source.calls)
@@ -116,18 +122,18 @@ def delivery(
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     worker = threading.Thread(target=server.serve_forever, daemon=True)
     worker.start()
-    for variable in ("AWS_CONFIG_FILE", "AWS_SHARED_CREDENTIALS_FILE"):
-        monkeypatch.setenv(variable, str(tmp_path / variable))
+    for variable in tuple(environ):
+        if variable.startswith("AWS_") or variable == "BOTO_CONFIG":
+            monkeypatch.delenv(variable)
     for variable in (
-        "AWS_PROFILE",
-        "AWS_DEFAULT_PROFILE",
-        "AWS_SESSION_TOKEN",
-        "AWS_SECURITY_TOKEN",
+        "AWS_CONFIG_FILE",
+        "AWS_SHARED_CREDENTIALS_FILE",
+        "BOTO_CONFIG",
     ):
-        monkeypatch.delenv(variable, raising=False)
+        monkeypatch.setenv(variable, str(tmp_path / variable))
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "fake-test-key")
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "fake-test-secret")
-    monkeypatch.setenv("AWS_IGNORE_CONFIGURED_ENDPOINT_URLS", "false")
+    monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
     monkeypatch.setenv(
         "AWS_ENDPOINT_URL_S3", f"http://127.0.0.1:{server.server_port}"
     )
