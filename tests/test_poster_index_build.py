@@ -13,7 +13,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.mark.parametrize(
-    "invalid", [None, "filename", "extension", "oversize", "status", "duplicate"]
+    "invalid",
+    [None, "filename", "extension", "oversize", "status", "duplicate"],
 )
 def test_index_command_validates_batch_before_replacing_output(
     tmp_path: Path, invalid: str | None

@@ -19,8 +19,10 @@ import uvicorn
 from botocore.awsrequest import AWSRequest
 from botocore.client import BaseClient
 from fastapi import Request
+from fastapi.responses import Response
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
+from starlette.middleware.base import RequestResponseEndpoint
 
 from movie_db_llm import config, posters
 from movie_db_llm.database import configure_sqlite_connection, get_session
@@ -56,8 +58,9 @@ def local_posters(directory: Path) -> Generator[posters.PosterAsset]:
         def log_message(self, format: str, *args: object) -> None:
             pass
 
-    @app.middleware("http")
-    async def track_poster_calls(request: Request, call_next):
+    async def track_poster_calls(
+        request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
         tag = request.headers.get("X-Poster-Test", "")
         token = scope.set(tag)
         try:
@@ -72,14 +75,20 @@ def local_posters(directory: Path) -> Generator[posters.PosterAsset]:
         finally:
             scope.reset(token)
 
-    @app.get("/movies/_poster-fixture/{tag}")
     async def poster_calls(tag: str) -> int:
         with lock:
             return calls[tag]
 
-    @app.post("/movies/_poster-fixture/{tag}/release")
     async def release_card(tag: str) -> None:
         pending.setdefault(tag, asyncio.Event()).set()
+
+    app.middleware("http")(track_poster_calls)
+    app.add_api_route(
+        "/movies/_poster-fixture/{tag}", poster_calls, methods=["GET"]
+    )
+    app.add_api_route(
+        "/movies/_poster-fixture/{tag}/release", release_card, methods=["POST"]
+    )
 
     def tag_s3_call(request: AWSRequest, **_: object) -> None:
         request.headers["X-Poster-Test"] = scope.get()
@@ -97,7 +106,9 @@ def local_posters(directory: Path) -> Generator[posters.PosterAsset]:
         environ["AWS_ACCESS_KEY_ID"] = "fake-test-key"
         environ["AWS_SECRET_ACCESS_KEY"] = "fake-test-secret"
         environ["AWS_IGNORE_CONFIGURED_ENDPOINT_URLS"] = "false"
-        environ["AWS_ENDPOINT_URL_S3"] = f"http://127.0.0.1:{server.server_port}"
+        environ["AWS_ENDPOINT_URL_S3"] = (
+            f"http://127.0.0.1:{server.server_port}"
+        )
         environ["NO_PROXY"] = "127.0.0.1"
         config.POSTER_BUCKET = "test-posters"
         client = cast(BaseClient, poster_store().client)
@@ -112,9 +123,10 @@ def local_posters(directory: Path) -> Generator[posters.PosterAsset]:
 
 
 def run() -> None:
-    with TemporaryDirectory(prefix="afterglow-browser-") as temp, local_posters(
-        Path(temp)
-    ) as asset:
+    with (
+        TemporaryDirectory(prefix="afterglow-browser-") as temp,
+        local_posters(Path(temp)) as asset,
+    ):
         url = f"sqlite:///{Path(temp) / 'catalog.sqlite3'}"
         subprocess.run(
             [sys.executable, "-m", "alembic", "upgrade", "head"],

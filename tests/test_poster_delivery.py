@@ -11,8 +11,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+from anyio.abc import BlockingPortal
 from anyio.to_thread import current_default_thread_limiter
 from fastapi.testclient import TestClient
+from httpx import Client
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
 
@@ -47,12 +49,15 @@ class FakeS3:
         self.lock = threading.Lock()
 
 
+type PosterDelivery = tuple[Client, FakeS3, BlockingPortal]
+
+
 @pytest.fixture
 def delivery(
     monkeypatch: pytest.MonkeyPatch,
     image: tuple[posters.PosterAsset, bytes],
     tmp_path: Path,
-) -> Generator[tuple[TestClient, FakeS3]]:
+) -> Generator[PosterDelivery]:
     asset, data = image
     source = FakeS3(data)
 
@@ -178,7 +183,9 @@ def delivery(
     main.app.dependency_overrides[main.get_intent_parser] = Parser
     try:
         with TestClient(main.app) as client:
-            yield client, source
+            portal = client.portal
+            assert portal is not None
+            yield client, source, portal
     finally:
         source.release.set()
         main.app.dependency_overrides = previous
@@ -190,10 +197,10 @@ def delivery(
 
 
 def test_poster_uses_one_get_per_request_and_returns_verified_bytes(
-    delivery: tuple[TestClient, FakeS3],
+    delivery: PosterDelivery,
     image: tuple[posters.PosterAsset, bytes],
 ) -> None:
-    client, s3 = delivery
+    client, s3, _ = delivery
     asset, data = image
     for _ in range(2):
         response = client.get("/movies/451/poster")
@@ -206,10 +213,10 @@ def test_poster_uses_one_get_per_request_and_returns_verified_bytes(
 
 
 def test_transient_failure_can_succeed_on_third_and_last_attempt(
-    delivery: tuple[TestClient, FakeS3],
+    delivery: PosterDelivery,
     image: tuple[posters.PosterAsset, bytes],
 ) -> None:
-    client, s3 = delivery
+    client, s3, _ = delivery
     s3.statuses = [503, 503, 200]
     response = client.get("/movies/451/poster")
     assert response.status_code == 200
@@ -218,10 +225,10 @@ def test_transient_failure_can_succeed_on_third_and_last_attempt(
 
 
 def test_a_stalled_body_can_recover_on_the_next_get(
-    delivery: tuple[TestClient, FakeS3],
+    delivery: PosterDelivery,
     image: tuple[posters.PosterAsset, bytes],
 ) -> None:
-    client, s3 = delivery
+    client, s3, _ = delivery
     s3.hold_calls = 1
     response = client.get("/movies/451/poster")
     assert response.status_code == 200
@@ -231,9 +238,9 @@ def test_a_stalled_body_can_recover_on_the_next_get(
 
 @pytest.mark.parametrize("failure", ["service", "truncated", "checksum"])
 def test_three_failed_attempts_omit_poster_and_keep_catalog_available(
-    delivery: tuple[TestClient, FakeS3], failure: str
+    delivery: PosterDelivery, failure: str
 ) -> None:
-    client, s3 = delivery
+    client, s3, _ = delivery
     s3.statuses = [503] * 12 if failure == "service" else []
     s3.truncate = failure == "truncated"
     s3.corrupt = failure == "checksum"
@@ -250,16 +257,15 @@ def test_three_failed_attempts_omit_poster_and_keep_catalog_available(
 
 
 def test_in_flight_posters_leave_catalog_workers_and_connections_free(
-    delivery: tuple[TestClient, FakeS3],
+    delivery: PosterDelivery,
 ) -> None:
-    client, s3 = delivery
+    client, s3, portal = delivery
     s3.hold_calls = 2
 
     async def limit_catalog_workers() -> None:
         current_default_thread_limiter().total_tokens = 2
 
-    assert client.portal is not None
-    client.portal.call(limit_catalog_workers)
+    portal.call(limit_catalog_workers)
     with ThreadPoolExecutor(max_workers=3) as workers:
         posters = [
             workers.submit(client.get, "/movies/451/poster") for _ in range(2)
@@ -283,17 +289,17 @@ def test_in_flight_posters_leave_catalog_workers_and_connections_free(
 
 @pytest.mark.parametrize("movie_id", [452, 453, 999])
 def test_unmatched_identity_never_uses_s3(
-    delivery: tuple[TestClient, FakeS3], movie_id: int
+    delivery: PosterDelivery, movie_id: int
 ) -> None:
-    client, s3 = delivery
+    client, s3, _ = delivery
     assert client.get(f"/movies/{movie_id}/poster").status_code == 404
     assert s3.calls == []
 
 
 def test_permanent_access_error_is_not_retried(
-    delivery: tuple[TestClient, FakeS3],
+    delivery: PosterDelivery,
 ) -> None:
-    client, s3 = delivery
+    client, s3, _ = delivery
     s3.statuses = [403] * 10
     assert client.get("/movies/451/poster").status_code == 503
     assert len(s3.calls) == 1
@@ -301,9 +307,9 @@ def test_permanent_access_error_is_not_retried(
 
 @pytest.mark.parametrize("with_region_hint", [False, True])
 def test_redirect_neither_replays_get_nor_probes_bucket(
-    delivery: tuple[TestClient, FakeS3], with_region_hint: bool
+    delivery: PosterDelivery, with_region_hint: bool
 ) -> None:
-    client, s3 = delivery
+    client, s3, _ = delivery
     s3.statuses = [503, 503, 301]
     s3.redirect_region = with_region_hint
     assert client.get("/movies/451/poster").status_code == 503
@@ -311,9 +317,9 @@ def test_redirect_neither_replays_get_nor_probes_bucket(
 
 
 def test_unconfigured_bucket_omits_images_without_s3(
-    delivery: tuple[TestClient, FakeS3], monkeypatch: pytest.MonkeyPatch
+    delivery: PosterDelivery, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    client, s3 = delivery
+    client, s3, _ = delivery
     monkeypatch.setattr(config, "POSTER_BUCKET", "")
     assert client.get("/movies/451/poster").status_code == 404
     assert s3.calls == []
