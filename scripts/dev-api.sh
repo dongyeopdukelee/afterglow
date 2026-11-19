@@ -21,7 +21,7 @@ unset AWS_CONTAINER_CREDENTIALS_RELATIVE_URI AWS_CONTAINER_CREDENTIALS_FULL_URI
 unset AWS_CONTAINER_AUTHORIZATION_TOKEN AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE
 unset UVICORN_ENV_FILE UVICORN_FD UVICORN_UDS
 export UV_NO_ENV_FILE=1
-export AWS_PROFILE=afterglow
+export AWS_PROFILE=afterglow-dev
 export AWS_CONFIG_FILE="$afterglow_aws_directory/config"
 export AWS_SHARED_CREDENTIALS_FILE="$afterglow_aws_directory/credentials"
 export AWS_LOGIN_CACHE_DIRECTORY="$afterglow_aws_directory/login-cache"

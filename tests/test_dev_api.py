@@ -125,7 +125,7 @@ def test_launcher_keeps_project_auth_through_dotenv_loaders(
         else ["python", "scripts/check_bedrock.py", "--live"]
     )
     assert env == {
-        "AWS_PROFILE": "afterglow",
+        "AWS_PROFILE": "afterglow-dev",
         "AWS_CONFIG_FILE": str(aws_directory / "config"),
         "AWS_SHARED_CREDENTIALS_FILE": str(aws_directory / "credentials"),
         "AWS_LOGIN_CACHE_DIRECTORY": str(aws_directory / "login-cache"),
@@ -163,6 +163,63 @@ def test_launcher_rejects_unsupported_invocations_before_dispatch(
     )
     assert result.returncode == returncode
     assert message in result.stderr
+
+
+def test_launcher_signs_with_persistent_profile_without_browser_login(
+    tmp_path: Path,
+) -> None:
+    """Real SDK resolution/signing must work with only an IAM key pair."""
+    environment = launcher_environment(tmp_path, "6.6-microsoft-WSL2")
+    aws_directory = tmp_path / ".config/afterglow/aws"
+    aws_directory.mkdir(parents=True)
+    (aws_directory / "config").write_text(
+        "[profile afterglow-dev]\nregion = us-west-2\n"
+        "[profile afterglow]\ncredential_process = /does/not/exist\n"
+    )
+    (aws_directory / "credentials").write_text(
+        "[afterglow-dev]\naws_access_key_id = AKIAEXAMPLEONLY\n"
+        "aws_secret_access_key = example-secret-not-real\n"
+    )
+    # Replace only the external uv boundary. Real boto3 and the production
+    # signer resolve the selected private profile and create the HTTP headers.
+    wrapper = tmp_path / "uv"
+    wrapper.write_text(
+        f"#!{sys.executable}\n"
+        + dedent("""\
+            import boto3, httpx
+            from movie_db_llm.bedrock import BedrockAuth
+
+            def observe(request):
+                auth = request.headers['authorization']
+                assert 'Credential=AKIAEXAMPLEONLY/' in auth
+                assert '/us-west-2/bedrock-mantle/aws4_request' in auth
+                assert 'x-amz-security-token' not in request.headers
+                return httpx.Response(200)
+
+            with httpx.Client(
+                auth=BedrockAuth(boto3.Session(), 'us-west-2'),
+                transport=httpx.MockTransport(observe),
+            ) as client:
+                response = client.post(
+                    'https://bedrock-mantle.us-west-2.api.aws/v1/test',
+                    json={},
+                )
+                assert response.status_code == 200
+            print('signed-with-persistent-profile')
+        """)
+    )
+    wrapper.chmod(0o755)
+    result = subprocess.run(
+        [str(LAUNCHER), "--check"],
+        cwd=PROJECT_ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "signed-with-persistent-profile"
 
 
 def run_config_report(

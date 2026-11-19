@@ -96,7 +96,7 @@ def inference_configuration(
 
 
 class BedrockAuth(httpx.Auth):
-    """Sign each request with fresh temporary credentials, including on Lambda."""
+    """Sign each request with SDK-resolved credentials, including on Lambda."""
 
     requires_request_body = True
 
@@ -156,7 +156,7 @@ class _Response(BaseModel):
 
 @lru_cache(maxsize=1)
 def bedrock_client() -> httpx.Client:
-    """Reuse connections, never API keys or a captured expiring credential."""
+    """Reuse connections; resolve credentials through the SDK when signing."""
     return httpx.Client(
         base_url=_mantle_endpoint(AWS_REGION),
         auth=BedrockAuth(boto3.Session(), AWS_REGION),

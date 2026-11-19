@@ -144,9 +144,21 @@ registration/renewal quote within the [selected budget](decisions.md#product-sco
 
 ### Deployment administrator profile
 
-The owner-authorized `afterglow` IAM role uses temporary sessions,
-not permanent access keys. On the current WSL host, its private CLI config is
-`/home/dukelee/.config/afterglow/aws/config`; the profile is `afterglow`.
+The owner selected persistent IAM user credentials for WSL development and
+administration. On this host, the `afterglow-dev` profile identifies the
+`afterglow-wsl-dev` IAM user with `AdministratorAccess`. Its access key pair
+has no automatic expiration and does not require `aws login` or a session
+token. This also works with AWS services beyond Bedrock. AWS generally
+recommends temporary credentials; this is the owner's deliberate choice for
+the personal development environment. See
+[IAM key lifetime](https://docs.aws.amazon.com/IAM/latest/UserGuide/securing_access-keys.html)
+and the [admin policy](https://docs.aws.amazon.com/aws-managed-policy/latest/reference/AdministratorAccess.html).
+
+Private config and credentials are stored under
+`/home/dukelee/.config/afterglow/aws/`, outside the repository. Do not put keys
+in application code, frontend/Vite variables, Git, logs, or chat. The hosted
+backend will obtain temporary credentials from its execution role.
+
 Exported access keys can take precedence over `AWS_PROFILE`. The CLI examples
 select the profile with `--profile`. The WSL launcher clears inherited
 profile, key, web identity, and container credential overrides, selects the
@@ -154,22 +166,28 @@ private project paths, and disables dotenv loading for uv and Uvicorn. The
 poster importer example clears the inherited overrides with `env -u`.
 [AWS credential precedence](https://docs.aws.amazon.com/cli/latest/topic/config-vars.html#credentials)
 
-Verify the assumed identity with the private config.
+Verify the persistent identity with the private files:
 
 ```sh
+env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN \
 AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
 AWS_SHARED_CREDENTIALS_FILE=/home/dukelee/.config/afterglow/aws/credentials \
-AWS_LOGIN_CACHE_DIRECTORY=/home/dukelee/.config/afterglow/aws/login-cache \
-  aws --profile afterglow sts get-caller-identity
+  aws --profile afterglow-dev --region us-west-2 sts get-caller-identity
 ```
 
-The `afterglow` profile uses a `credential_process` that reads the project's
+The ARN should end in `user/afterglow-wsl-dev`. The normal local API command
+and `scripts/dev-api.sh --check` select this profile automatically. New
+interactive zsh shells default to these private paths and `afterglow-dev`
+unless an explicit caller setting is present. Existing terminals can use the
+explicit command above. Browser Console visits still have a separate sign-in.
+
+The older `afterglow` profile remains available. Its `credential_process` reads the project's
 private WSL `afterglow-source` login session, calls STS AssumeRole, and returns
 one-hour role credentials to its caller. It does not use `role_arn` /
 `source_profile` or the AWS CLI's standard on-disk assume-role cache.
 The separate `afterglow-source` profile uses `login_session`.
-When the browser-login session expires, refresh `afterglow-source` with
-the same config and cache.
+Only this older route needs browser renewal. If deliberately using it,
+refresh `afterglow-source` with the same config and cache:
 
 ```sh
 AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
@@ -182,6 +200,12 @@ An unqualified `aws login` refreshes the default profile/cache, not necessarily
 this project session. On this host the default `.aws` path points to Windows;
 the explicit paths above keep project authentication inside WSL. Never copy
 tokens into this repository, logs or chat.
+
+To replace the persistent key later, create a second key for this IAM user,
+save it directly into the private credentials profile, verify STS and a live
+Bedrock check, then deactivate/delete the old key. Do not print the creation
+response: AWS returns the secret only once. No replacement schedule is
+enforced by the standard IAM key type.
 
 For this role's use in WSL and the hosted runtime identity, see the
 [project decisions](decisions.md#product-scope).
