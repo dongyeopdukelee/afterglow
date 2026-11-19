@@ -1,4 +1,4 @@
-"""Bounded reads of private S3 posters; failures never block catalog results."""
+"""Read and verify private S3 posters with bounded retries."""
 
 import logging
 import random
@@ -44,7 +44,7 @@ class PosterStore:
         self.bucket = bucket
 
     def fetch(self, asset: PosterAsset) -> bytes:
-        """Retry the entire GET/read at most three times, then omit the image."""
+        """Attempt the full GET and body read up to three times."""
         if not 0 < asset.size <= MAX_POSTER_BYTES:
             raise PosterUnavailableError("Invalid poster size")
         for attempt in range(1, MAX_ATTEMPTS + 1):

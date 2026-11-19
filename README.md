@@ -34,10 +34,8 @@ scripts/dev-api.sh
 
 The API listens at `http://127.0.0.1:8000`. Recommendation searches use
 paid Amazon Bedrock inference by default. The API sends the query and catalog
-genre labels using the same settings intended for deployment. Browse and
-synopsis data come from the catalog. The website requests each card and
-detail poster separately through the API, which fetches matched images from
-private S3. For Bedrock searches, follow the
+genre labels using the same settings intended for deployment. For Bedrock
+searches and catalog posters, follow the
 [WSL authentication setup](docs/website.md#deployment-administrator-profile).
 
 To run the local website, use Node.js 24+ and start Vite in another terminal:
@@ -56,8 +54,9 @@ See [website development](docs/website.md) for build, browser verification and
 deployment prerequisites. This milestone runs locally; AWS deployment and
 plot/mood matching remain upcoming.
 
-See [poster sourcing and storage](docs/posters.md) for the bundled artwork
-and the separate offline catalog-wide acquisition CLI.
+Browse and synopsis data come from the catalog. The website loads card and
+detail images separately through the API. See
+[poster delivery and configuration](docs/posters.md#website-delivery).
 
 ### Optional offline inference
 
@@ -94,9 +93,9 @@ provider failures never trigger an automatic switch.
 - `GET /health` reports whether the API is running.
 - `GET /movies/{movie_id}` returns a movie card and its full synopsis, or 404.
 - `GET /movies/{movie_id}/poster` fetches a matched poster from private S3.
-  It returns image bytes or a noncritical 404/503; the website shows its
-  abstract fallback if unavailable. Transient fetch/read failures have at
-  most three total attempts. See [poster delivery](docs/posters.md#website-delivery).
+  It returns image bytes, 404 for an unmatched film or unconfigured bucket,
+  or 503 if the poster cannot be fetched or verified. See
+  [poster delivery](docs/posters.md#website-delivery).
 - `GET /movies` returns an ordered page of imported movie cards. It accepts
   `limit` (default 20, maximum 100) and `offset` (default 0) query parameters.
   Without a seed, movies are ordered by title and identifier.
@@ -220,8 +219,10 @@ curl 'http://127.0.0.1:8000/movies?limit=20&offset=0'
 Docker Compose stores the SQLite database in the `movie-db-data` named volume.
 The default API uses the same Bedrock application settings as the WSL launch.
 `INTENT_PROVIDER`, `AWS_REGION`, `BEDROCK_MODEL_ID`, and `OLLAMA_MODEL`
-overrides pass through when supplied. The image lacks the host's credential
-process and its paths, so configure container authentication separately.
+overrides pass through when supplied. See
+[poster delivery](docs/posters.md#website-delivery) for the optional bucket
+setting. The image lacks the host's credential process and its paths, so
+configure container authentication separately.
 Use the WSL launcher for the authenticated local-development workflow above.
 
 For offline Docker inference, download the selected model once while online.

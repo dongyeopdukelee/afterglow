@@ -142,9 +142,7 @@ def find_poster_asset(
 ) -> PosterAsset:
     """Resolve a poster while borrowing a catalog connection briefly."""
     if not config.POSTER_BUCKET:
-        raise HTTPException(
-            404, "Poster unavailable.", headers=POSTER_HEADERS
-        )
+        raise HTTPException(404, "Poster unavailable.", headers=POSTER_HEADERS)
     with session:
         movie = session.get(Movie, movie_id)
         if movie is None:
@@ -154,7 +152,7 @@ def find_poster_asset(
         identity = movie.title, movie.release_year, movie.synopsis
     try:
         asset = poster_for(*identity)
-    except (OSError, ValueError):
+    except OSError, ValueError:
         raise HTTPException(
             503, "Poster temporarily unavailable.", headers=POSTER_HEADERS
         ) from None
