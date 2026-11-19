@@ -20,10 +20,10 @@ from typing import Any, cast
 import httpx
 
 from movie_db_llm.cmu_parser import RELEASE_YEAR_PATTERN
+from movie_db_llm.posters import MAX_POSTER_BYTES, POSTER_MEDIA_TYPES
 
 API = "https://api.themoviedb.org/3"
 IMAGES = "https://image.tmdb.org/t/p/w500"
-MAX_BYTES = 2_000_000
 
 
 @dataclass(frozen=True)
@@ -178,8 +178,11 @@ class Importer:
             if poster_path is None:
                 return {"status": "no_poster", "tmdb_id": match["id"]}
             if not isinstance(poster_path, str) or not re.fullmatch(
-                r"/[A-Za-z0-9]+\.(jpg|png|webp)", poster_path
+                r"/[A-Za-z0-9]+\.[a-z]+", poster_path
             ):
+                return {"status": "error", "reason": "invalid_image_path"}
+            extension = poster_path.rsplit(".", 1)[1]
+            if extension not in POSTER_MEDIA_TYPES:
                 return {"status": "error", "reason": "invalid_image_path"}
             image_url = IMAGES + poster_path
             with self.client.stream(
@@ -189,9 +192,8 @@ class Importer:
                 body = bytearray()
                 for chunk in response.iter_bytes():
                     body.extend(chunk)
-                    if len(body) > MAX_BYTES:
+                    if len(body) > MAX_POSTER_BYTES:
                         return {"status": "error", "reason": "image_too_large"}
-            extension = poster_path.rsplit(".", 1)[1]
             signatures = {
                 "jpg": b"\xff\xd8\xff",
                 "png": b"\x89PNG\r\n\x1a\n",

@@ -78,15 +78,17 @@ when a decision is made, changed, or removed.
 - Catalog cards and details fetch the acquired posters from private S3 through
   `GET /movies/{id}/poster`. A full page eagerly loads its 12 poster slots;
   each matched image normally makes one S3 GET, with no HEAD request or image
-  cache. The backend makes at most three total attempts, with bounded timeouts
+  cache. Each detail opening makes a separate request. The backend makes
+  at most three total attempts, with bounded timeouts
   and backoff, including failed/truncated body reads. Transient failures retry;
   missing matches and permanent errors need no repeated request. Exhaustion
   uses the existing abstract fallback without blocking catalog/search results.
 - The metadata-only poster index is packaged with the backend. Match exact
   title, release year and the source synopsis fingerprint, independent of local
   movie IDs; validate image size and SHA-256 before serving bytes. No downloaded
-  bulk image binaries are added to Git. Bucket/region are backend configuration,
-  and AWS credentials never reach the browser. Keep S3 private and encrypted.
+  bulk image binaries are added to Git. The bucket is backend configuration
+  and the poster client uses its Oregon region (`us-west-2`). AWS credentials
+  stay in the backend. Keep S3 private and encrypted.
 - The two static hero posters keep their bundled images and make no S3 calls.
   Existing starter-film discovery priority and seeded pagination remain; bulk
   poster availability applies to all catalog/search results. Hero film cards

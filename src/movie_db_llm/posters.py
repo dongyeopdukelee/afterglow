@@ -9,6 +9,12 @@ from importlib.resources import files
 from threading import Lock
 
 _index_lock = Lock()
+MAX_POSTER_BYTES = 2_000_000
+POSTER_MEDIA_TYPES = {
+    "jpg": "image/jpeg",
+    "png": "image/png",
+    "webp": "image/webp",
+}
 
 POSTER_FILMS: tuple[tuple[str, int], ...] = tuple(
     (entry["title"], entry["year"])
@@ -28,9 +34,7 @@ class PosterAsset:
 
     @property
     def media_type(self) -> str:
-        return {"jpg": "image/jpeg", "png": "image/png", "webp": "image/webp"}[
-            self.filename.rsplit(".", 1)[1]
-        ]
+        return POSTER_MEDIA_TYPES[self.filename.rsplit(".", 1)[1]]
 
 
 def poster_identity(title: str, year: int | None, synopsis_hash: str) -> str:

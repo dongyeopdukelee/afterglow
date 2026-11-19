@@ -12,14 +12,16 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
-@pytest.mark.parametrize("invalid", [None, "filename", "status", "duplicate"])
+@pytest.mark.parametrize(
+    "invalid", [None, "filename", "extension", "oversize", "status", "duplicate"]
+)
 def test_index_command_validates_batch_before_replacing_output(
     tmp_path: Path, invalid: str | None
 ) -> None:
     digest = sha256(b"image").hexdigest()
     record = {
-        "title": "A Film",
-        "year": 2001,
+        "title": "Un été",
+        "year": None,
         "status": "stored",
         "source_synopsis_sha256": sha256(b"A story.").hexdigest(),
         "filename": digest[:20] + ".jpg",
@@ -28,6 +30,10 @@ def test_index_command_validates_batch_before_replacing_output(
     }
     if invalid == "filename":
         record["filename"] = "../outside.jpg"
+    if invalid == "extension":
+        record["filename"] = digest[:20] + ".svg"
+    if invalid == "oversize":
+        record["bytes"] = 2_000_001
     if invalid == "status":
         record["status"] = "needs_review"
     records = [record, record] if invalid == "duplicate" else [record]
@@ -55,7 +61,10 @@ def test_index_command_validates_batch_before_replacing_output(
         data["source_manifest_sha256"]
         == sha256(manifest.read_bytes()).hexdigest()
     )
-    assert list(data["films"].values()) == [[record["filename"], 5, digest]]
+    identity = (
+        "d3f2465204fded8c82229425fe98e4451ef6326565e44698a014f96c3f9df0cf"
+    )
+    assert data["films"] == {identity: [record["filename"], 5, digest]}
     first = output.read_bytes()
     subprocess.run(command, cwd=ROOT, check=True, capture_output=True)
     assert output.read_bytes() == first

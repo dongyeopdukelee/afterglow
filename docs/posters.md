@@ -17,20 +17,22 @@ recommendations do not wait for image downloads or call S3 themselves.
 A 12-card browse page eagerly requests all 12 poster slots. Each matched
 poster makes one normal S3 GET, without a preceding HEAD. Responses use
 `Cache-Control: no-store` so fresh page loads fetch again. Unmatched films
-return 404 without contacting S3. Poster failures affect only that image.
+return 404 without contacting S3. Each detail opening requests its own poster,
+including while the card image is loading. Poster failures affect only that
+image.
 
 The backend owns a three-attempt maximum, counting the first request. SDK
-automatic retries are disabled for this client to prevent multiplying the cap.
+automatic retries and S3 region redirects are disabled for poster GETs.
 The retry covers the entire GET and body read, with small exponential jitter,
 two-second connection and three-second socket-read timeouts. Transient network,
-429/5xx/throttling, truncation and checksum failures retry; permanent errors
+retryable service, truncation and checksum failures retry. Permanent errors
 stop early. Each attempt closes its response body. Bytes are bounded to the
 verified expected size (at most 2 MB), checked against SHA-256, then returned
 with a raster content type. Failed posters return a generic 503, and the
 browser uses its abstract placeholder without adding another retry loop.
 
-Set `POSTER_BUCKET` and optionally `POSTER_REGION` (default `us-west-2`) for
-the backend. Without a bucket, images fall back without AWS calls. The WSL
+Set `POSTER_BUCKET` for the backend. The poster client uses `us-west-2`
+(Oregon). Without a bucket, images fall back without AWS calls. The WSL
 launcher selects the existing project bucket automatically. Hosted deployment
 must configure its own execution role for `s3:GetObject` on this bucket's
 `posters/*` objects; it must not use the owner's local administrator key.
@@ -38,12 +40,24 @@ Compose passes the settings through but does not mount host credentials.
 All AWS authentication stays in the backend; no public bucket or browser
 credentials are required. Public hosting remains a separate milestone.
 
-Generate the compact metadata index from a verified acquisition manifest:
+Generate the compact metadata index from the verified, synopsis-enriched
+manifest kept with the private acquisition reports. For the shipped batch,
+select the manifest whose SHA-256 is
+`65bd0f3bfa8a491493a9f4d1138ecea98ea22a68a85890107023d8ce0c5c329d`.
 
 ```sh
-uv run python scripts/build_poster_index.py /path/to/poster-catalog/manifest.json \
+uv run python scripts/build_poster_index.py /path/to/verified-enriched-manifest.json \
   src/movie_db_llm/poster_index.json.gz
 ```
+
+To regenerate the enriched input from older acquisition reports, use each
+pass's original catalog snapshot. For each verified stored row, look up its
+`movie_id` in that source catalog, require the row's exact title and year to
+match, and add `source_synopsis_sha256` as the SHA-256 of the full, unmodified
+synopsis encoded as UTF-8. Preserve the verified filename, byte count, and
+image SHA-256. Join to the delivery catalog on exact title, year, and synopsis
+hash. Keep one reviewed image per joined identity when combining passes.
+Retain the final enriched JSON bytes to reproduce the same recorded checksum.
 
 The index includes the source manifest's checksum and is reproducibly gzipped.
 Keep the acquisition manifests, per-file provenance and verification reports
@@ -156,8 +170,8 @@ The decorative hero's starter image batch contains 13 title-and-year matches fro
 Commons. The search candidates were reviewed rather than accepting the first
 search result: results included unrelated books, logos, and an AI-generated
 Nosferatu cover, which were excluded. These are source-identified public-domain
-posters. Attribution and the Commons license records remain in the asset
-manifest and source files; the page does not include a separate credits panel.
+posters. The Image credits section acknowledges Wikimedia Commons. The asset
+manifest and source files retain attribution and the Commons license records.
 
 `data/posters/sources.json` records the reviewed film/version/file choices.
 `src/movie_db_llm/posters.json` records the source page, author, image URL,

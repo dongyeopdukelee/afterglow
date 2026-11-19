@@ -7,7 +7,11 @@ import re
 from hashlib import sha256
 from pathlib import Path
 
-from movie_db_llm.posters import poster_identity
+from movie_db_llm.posters import (
+    MAX_POSTER_BYTES,
+    POSTER_MEDIA_TYPES,
+    poster_identity,
+)
 
 
 def build(manifest: Path, output: Path) -> int:
@@ -20,9 +24,10 @@ def build(manifest: Path, output: Path) -> int:
         if (
             row["status"] != "stored"
             or not isinstance(filename, str)
-            or not re.fullmatch(r"[0-9a-f]{20}\.(jpg|png|webp)", filename)
+            or not re.fullmatch(r"[0-9a-f]{20}\.[a-z]+", filename)
+            or filename.rsplit(".", 1)[1] not in POSTER_MEDIA_TYPES
             or type(size) is not int
-            or not 0 < size <= 2_000_000
+            or not 0 < size <= MAX_POSTER_BYTES
             or not re.fullmatch(r"[0-9a-f]{64}", digest)
             or filename.split(".")[0] != digest[:20]
             or not re.fullmatch(r"[0-9a-f]{64}", source_hash)

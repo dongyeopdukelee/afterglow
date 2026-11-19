@@ -239,7 +239,7 @@ For the opt-in paid evaluation outside CI, see the
 [bounded live check](aws-readiness.md#repeat-the-bounded-live-parsing-check).
 
 The opening selection shuffles on a new visit; its seed stays fixed while
-paging. A `?seed=332` URL makes a visit reproducible. Verified poster matches
+paging. A `?seed=332` URL makes a visit reproducible. The 13 starter films
 appear first, then the complete remaining catalog. See the
 [API contract](../README.md#api) for ordering outside website browsing.
 

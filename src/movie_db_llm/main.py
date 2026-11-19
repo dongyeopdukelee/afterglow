@@ -1,5 +1,6 @@
 """FastAPI application entry point."""
 
+from asyncio import to_thread
 from typing import Annotated, Literal
 
 import uvicorn
@@ -10,12 +11,12 @@ from pydantic import BaseModel
 from sqlalchemy import case, func, select, tuple_
 from sqlalchemy.orm import Session, selectinload
 
-from movie_db_llm.config import POSTER_BUCKET
+from movie_db_llm import config
 from movie_db_llm.database import get_session
 from movie_db_llm.models import Movie
 from movie_db_llm.ollama import get_intent_parser
 from movie_db_llm.poster_store import PosterUnavailableError, poster_store
-from movie_db_llm.posters import POSTER_FILMS, poster_for
+from movie_db_llm.posters import POSTER_FILMS, PosterAsset, poster_for
 from movie_db_llm.recommendations import (
     IntentParser,
     InvalidModelResponseError,
@@ -27,6 +28,10 @@ from movie_db_llm.recommendations import (
 )
 
 app = FastAPI(title="Afterglow")
+POSTER_HEADERS = {
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+}
 
 
 class HealthResponse(BaseModel):
@@ -89,7 +94,7 @@ def list_movies(
 ) -> MovieListResponse:
     """Browse alphabetically, or shuffle with stable pages for a given seed.
 
-    Shuffled discovery puts reviewed poster matches first, then the rest of
+    Shuffled discovery puts the reviewed starter films first, then the rest of
     the complete catalog. All pages in one visit use the same seed.
     """
     statement = (
@@ -131,24 +136,44 @@ def get_movie(
     )
 
 
-@app.get("/movies/{movie_id}/poster", response_class=Response)
-def get_movie_poster(
+def find_poster_asset(
     movie_id: int,
     session: Annotated[Session, Depends(get_session)],
+) -> PosterAsset:
+    """Resolve a poster while borrowing a catalog connection briefly."""
+    if not config.POSTER_BUCKET:
+        raise HTTPException(
+            404, "Poster unavailable.", headers=POSTER_HEADERS
+        )
+    with session:
+        movie = session.get(Movie, movie_id)
+        if movie is None:
+            raise HTTPException(
+                404, "Poster unavailable.", headers=POSTER_HEADERS
+            )
+        identity = movie.title, movie.release_year, movie.synopsis
+    try:
+        asset = poster_for(*identity)
+    except (OSError, ValueError):
+        raise HTTPException(
+            503, "Poster temporarily unavailable.", headers=POSTER_HEADERS
+        ) from None
+    if asset is None:
+        raise HTTPException(404, "Poster unavailable.", headers=POSTER_HEADERS)
+    return asset
+
+
+def fetch_poster(asset: PosterAsset) -> bytes:
+    return poster_store().fetch(asset)
+
+
+@app.get("/movies/{movie_id}/poster", response_class=Response)
+async def get_movie_poster(
+    asset: Annotated[PosterAsset, Depends(find_poster_asset)],
 ) -> Response:
     """Fetch one matched private object on demand, with no cache or HEAD call."""
-    headers = {
-        "Cache-Control": "no-store",
-        "X-Content-Type-Options": "nosniff",
-    }
-    movie = session.get(Movie, movie_id)
-    if movie is None or not POSTER_BUCKET:
-        raise HTTPException(404, "Poster unavailable.", headers=headers)
     try:
-        asset = poster_for(movie.title, movie.release_year, movie.synopsis)
-        if asset is None:
-            raise HTTPException(404, "Poster unavailable.", headers=headers)
-        data = poster_store().fetch(asset)
+        data = await to_thread(fetch_poster, asset)
     except (
         PosterUnavailableError,
         BotoCoreError,
@@ -157,9 +182,9 @@ def get_movie_poster(
         ValueError,
     ):
         raise HTTPException(
-            503, "Poster temporarily unavailable.", headers=headers
+            503, "Poster temporarily unavailable.", headers=POSTER_HEADERS
         ) from None
-    return Response(data, media_type=asset.media_type, headers=headers)
+    return Response(data, media_type=asset.media_type, headers=POSTER_HEADERS)
 
 
 @app.post("/recommendations")

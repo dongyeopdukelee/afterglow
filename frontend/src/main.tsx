@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useRef, useState } from 'react';
+import { StrictMode, useEffect, useId, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { detail, request, results } from './api';
 import type { Detail, Intent, Movie } from './api';
@@ -43,9 +43,10 @@ function FilmArtwork({ variant = 0 }: { variant?: number }) {
   </div>;
 }
 
-function MovieArtwork({ movie, hero = false }: { movie: Pick<Movie, 'id' | 'title' | 'release_year'>; hero?: boolean }) {
+function MovieArtwork({ movie, hero = false, detailId }: { movie: Pick<Movie, 'id' | 'title' | 'release_year'>; hero?: boolean; detailId?: string }) {
   const poster = hero ? posterFor(movie) : undefined;
-  const url = hero ? (poster && posterUrl(poster)) : `/movies/${movie.id}/poster`;
+  const query = detailId ? `?detail=${encodeURIComponent(detailId)}` : '';
+  const url = hero ? (poster && posterUrl(poster)) : `/movies/${movie.id}/poster${query}`;
   const [failed, setFailed] = useState(false);
   return url && !failed
     ? <div className="art poster-art"><img src={url} alt={`${movie.title} (${movie.release_year ?? 'year unavailable'}) poster`} loading="eager" onError={() => setFailed(true)} /></div>
@@ -54,6 +55,7 @@ function MovieArtwork({ movie, hero = false }: { movie: Pick<Movie, 'id' | 'titl
 
 function MovieDialog({ movie, close }: { movie: Movie; close: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const detailId = useId();
   const [full, setFull] = useState<Detail>();
   const [error, setError] = useState('');
   function dismiss() {
@@ -71,7 +73,7 @@ function MovieDialog({ movie, close }: { movie: Movie; close: () => void }) {
   }, [movie.id]);
   return <dialog ref={dialog} onCancel={event => { event.preventDefault(); dismiss(); }} aria-labelledby="movie-title">
     <button className="close" aria-label="Close movie details" onClick={dismiss}>×</button>
-    <div className="detail-art"><MovieArtwork movie={movie} /></div>
+    <div className="detail-art"><MovieArtwork movie={movie} detailId={detailId} /></div>
     <div className="detail-content">
       <p className="eyebrow">A closer look</p><h2 id="movie-title">{movie.title}</h2>
       <p className="muted">{movie.release_year ?? 'Year unavailable'} · {movie.genres.join(' / ') || 'Genres unavailable'}</p>

@@ -1,5 +1,4 @@
 import { test, expect } from '@playwright/test';
-import { readFile } from 'node:fs/promises';
 
 const comedyIntent = {
   genres: ['Comedy'], year_min: 1990, year_max: 1999,
@@ -68,27 +67,56 @@ test('hero films are static and a failed poster has an intentional fallback', as
 });
 
 test('a full page fetches twelve posters and a fresh page load fetches them again', async ({ page }) => {
-  const poster = await readFile(new URL('../public/posters/18601f3133cb00c8af58.jpg', import.meta.url));
-  const requests: string[] = [];
-  await page.route(/\/movies\/\d+\/poster$/, async route => {
-    requests.push(new URL(route.request().url()).pathname);
-    await route.fulfill({ status: 200, contentType: 'image/jpeg', body: poster, headers: { 'Cache-Control': 'no-store' } });
+  const tag = `reload-${crypto.randomUUID()}`;
+  const counter = `/movies/_poster-fixture/${tag}`;
+  await page.setExtraHTTPHeaders({ 'X-Poster-Test': tag });
+  const responses: { path: string; cache: string }[] = [];
+  page.on('response', response => {
+    const path = new URL(response.url()).pathname;
+    if (/^\/movies\/\d+\/poster$/.test(path)) {
+      responses.push({ path, cache: response.headers()['cache-control'] });
+    }
   });
-  await page.goto('/');
-  await expect(page.locator('.movie-card img')).toHaveCount(12);
-  await expect.poll(() => page.locator('.movie-card img').evaluateAll(images => images.every(image => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0))).toBe(true);
-  expect(requests).toHaveLength(12);
-  expect(new Set(requests).size).toBe(12);
-  await page.reload();
-  await expect(page.locator('.movie-card img')).toHaveCount(12);
-  await expect.poll(() => page.locator('.movie-card img').evaluateAll(images => images.every(image => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0))).toBe(true);
-  expect(requests).toHaveLength(24);
+  for (const load of [1, 2]) {
+    if (load === 1) await page.goto('/');
+    else await page.reload();
+    await expect(page.locator('.movie-card img')).toHaveCount(12);
+    await expect.poll(() => page.locator('.movie-card img').evaluateAll(images => images.every(image => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0))).toBe(true);
+    expect(await (await page.request.get(counter)).json()).toBe(load * 12);
+    expect(responses).toHaveLength(load * 12);
+    expect(new Set(responses.slice(-12).map(response => response.path)).size).toBe(12);
+    expect(responses.every(response => response.cache === 'no-store')).toBe(true);
+  }
   await expect(page.getByRole('region', { name: 'Image credits' })).toContainText('This product uses the TMDB API but is not endorsed or certified by TMDB.');
+});
+
+test('each detail opening fetches its own poster while the card is pending', async ({ page }) => {
+  const tag = `detail-${crypto.randomUUID()}`;
+  const counter = `/movies/_poster-fixture/${tag}`;
+  await page.setExtraHTTPHeaders({ 'X-Poster-Test': tag });
+  try {
+    const cardRequest = page.waitForRequest(request => new URL(request.url()).pathname === '/movies/1/poster');
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await cardRequest;
+    await expect.poll(async () => (await page.request.get(counter)).json()).toBe(12);
+    const card = page.getByRole('button', { name: /Film 00/ });
+    for (const opening of [1, 2]) {
+      expect(await card.locator('img').evaluate(image => (image as HTMLImageElement).complete)).toBe(false);
+      await card.click();
+      const dialog = page.getByRole('dialog');
+      await expect(dialog).toContainText('The complete synopsis for film 00.');
+      await expect.poll(() => dialog.locator('img').evaluate(image => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+      expect(await (await page.request.get(counter)).json()).toBe(12 + opening);
+      await dialog.getByRole('button', { name: 'Close movie details' }).click();
+    }
+  } finally {
+    await page.request.post(`${counter}/release`);
+  }
 });
 
 test('exhausted poster fetches leave the films usable without more image retries', async ({ page }) => {
   let requests = 0;
-  await page.route(/\/movies\/\d+\/poster$/, async route => {
+  await page.route(url => /^\/movies\/\d+\/poster$/.test(url.pathname), async route => {
     requests += 1;
     await route.fulfill({ status: 503, json: { detail: 'Poster temporarily unavailable.' } });
   });
@@ -101,7 +129,10 @@ test('exhausted poster fetches leave the films usable without more image retries
   await page.getByRole('textbox').fill('a query');
   expect(requests).toBe(12);
   await page.getByRole('button', { name: /Film 00/ }).click();
-  await expect(page.getByRole('dialog')).toContainText('The complete synopsis for film 00.');
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('The complete synopsis for film 00.');
+  await expect(dialog.locator('.art-label')).toBeVisible();
+  expect(requests).toBe(13);
 });
 
 test('visitor browses real API pages and reads a full synopsis', async ({ page }) => {

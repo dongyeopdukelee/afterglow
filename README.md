@@ -34,8 +34,10 @@ scripts/dev-api.sh
 
 The API listens at `http://127.0.0.1:8000`. Recommendation searches use
 paid Amazon Bedrock inference by default. The API sends the query and catalog
-genre labels using the same settings intended for deployment. Browsing and
-loading synopses use only the catalog. For Bedrock searches, follow the
+genre labels using the same settings intended for deployment. Browse and
+synopsis data come from the catalog. The website requests each card and
+detail poster separately through the API, which fetches matched images from
+private S3. For Bedrock searches, follow the
 [WSL authentication setup](docs/website.md#deployment-administrator-profile).
 
 To run the local website, use Node.js 24+ and start Vite in another terminal:
@@ -99,7 +101,7 @@ provider failures never trigger an automatic switch.
   `limit` (default 20, maximum 100) and `offset` (default 0) query parameters.
   Without a seed, movies are ordered by title and identifier.
   An optional `seed` (0–2147483647) selects repeatable shuffled discovery,
-  with verified poster matches first. Keep the same seed between pages.
+  with the 13 starter films first. Keep the same seed between pages.
 - `POST /recommendations` interprets a natural-language request using the
   configured provider and returns up to 10 matching movie cards plus the
   parsed intent.
