@@ -102,9 +102,9 @@ when a decision is made, changed, or removed.
 - Select hosted inference from existing account quotas; quota-increase requests
   are out of scope for the current deployment phase. A positive quota listing
   does not replace successful live invocation and quality checks.
-- Bedrock intent extraction uses Mantle Chat Completions signed with AWS
-  credentials: a persistent IAM user access key for local WSL development,
-  and execution-role credentials in the hosted runtime. For defaults, see
+- Bedrock intent extraction uses Mantle Chat Completions. The local WSL
+  launcher requires a persistent IAM user key pair, and the hosted runtime
+  will sign with execution-role credentials. For defaults, see
   [inference configuration](../README.md#inference-configuration).
   Live results and deployment status are recorded in [AWS readiness](aws-readiness.md).
 - Bedrock intent extraction requires validated tool output, shared
@@ -122,15 +122,17 @@ when a decision is made, changed, or removed.
   are the target hosting approach; vector-storage compatibility and costs must
   be validated before provisioning.
 - The owner selected a standard IAM user access key for ongoing WSL development
-  and administration, including future AWS services beyond Bedrock. The private
-  `afterglow-dev` profile uses the `afterglow-wsl-dev` IAM user with AWS's managed
-  `AdministratorAccess` policy. The owner accepts a long-lived local administrator
-  credential without automatic expiry to avoid recurring browser sign-in.
-  Keep the key pair outside Git, frontend configuration, and logs. The WSL API
-  launcher selects this profile; new interactive zsh shells default to it while
-  honoring explicit caller profile/path settings. The older `afterglow` role and
-  `afterglow-source` browser-login profile remain available separately. The
-  hosted API will use its own execution role rather than this development key.
+  and administration, including future AWS services beyond Bedrock. The target
+  is a private `afterglow-dev` profile backed by the `afterglow-wsl-dev` IAM
+  user with AWS's managed `AdministratorAccess` policy. The owner accepts a
+  long-lived local administrator credential without automatic expiry to avoid
+  recurring browser sign-in. Keep the key pair outside Git, frontend
+  configuration, and logs. The WSL API launcher selects the private shared
+  credentials file. The planned interactive zsh defaults will select the same
+  profile while honoring explicit caller profile and path settings.
+  Provisioning and live checks depend on a fresh owner sign-in. The older
+  `afterglow` role and `afterglow-source` browser-login profile remain available
+  separately. The hosted API will use its own execution role.
 
 ## Technology
 

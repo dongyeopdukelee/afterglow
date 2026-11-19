@@ -47,7 +47,8 @@ def test_launcher_keeps_project_auth_through_dotenv_loaders(
 
             def report(target):
                 env = {k: v for k, v in os.environ.items()
-                       if k.startswith(('AWS_', 'BEDROCK_', 'INTENT_'))}
+                       if k.startswith(('AWS_', 'BEDROCK_', 'INTENT_'))
+                       or k == 'BOTO_CONFIG'}
                 print(json.dumps([os.getcwd(), target, env]))
                 raise SystemExit(0)
 
@@ -78,6 +79,7 @@ def test_launcher_keeps_project_auth_through_dotenv_loaders(
     aws_directory = tmp_path / ".config/afterglow/aws"
     provider = "ollama" if port is not None else "bedrock"
     environment = launcher_environment(tmp_path, release) | {
+        "BOTO_CONFIG": str(tmp_path / ".boto"),
         "CDPATH": ".",
         "UV_NO_SYNC": "1",
         "UV_OFFLINE": "1",
@@ -91,6 +93,8 @@ def test_launcher_keeps_project_auth_through_dotenv_loaders(
         "AWS_CONFIG_FILE": str(tmp_path / ".aws/config"),
         "AWS_SHARED_CREDENTIALS_FILE": str(tmp_path / ".aws/credentials"),
         "AWS_LOGIN_CACHE_DIRECTORY": str(tmp_path / ".aws/login/cache"),
+        "AWS_CREDENTIAL_FILE": str(tmp_path / "ec2-credentials"),
+        "AWS_EC2_METADATA_DISABLED": "false",
         "AWS_PROFILE": "unrelated",
         "AWS_DEFAULT_PROFILE": "unrelated-default",
         "AWS_ACCESS_KEY_ID": "inherited-test-key",
@@ -126,9 +130,10 @@ def test_launcher_keeps_project_auth_through_dotenv_loaders(
     )
     assert env == {
         "AWS_PROFILE": "afterglow-dev",
-        "AWS_CONFIG_FILE": str(aws_directory / "config"),
+        "AWS_CONFIG_FILE": os.devnull,
         "AWS_SHARED_CREDENTIALS_FILE": str(aws_directory / "credentials"),
-        "AWS_LOGIN_CACHE_DIRECTORY": str(aws_directory / "login-cache"),
+        "AWS_EC2_METADATA_DISABLED": "true",
+        "BOTO_CONFIG": os.devnull,
         "AWS_REGION": "us-east-2",
         "BEDROCK_MODEL_ID": "explicit-model",
         "INTENT_PROVIDER": provider,
@@ -165,52 +170,99 @@ def test_launcher_rejects_unsupported_invocations_before_dispatch(
     assert message in result.stderr
 
 
-def test_launcher_signs_with_persistent_profile_without_browser_login(
+@pytest.mark.parametrize("arguments", [[], ["--check"]], ids=["api", "check"])
+@pytest.mark.parametrize(
+    "credential_source", ["shared", "missing", "boto", "ec2", "config"]
+)
+def test_launcher_signs_only_with_persistent_profile(
     tmp_path: Path,
+    arguments: list[str],
+    credential_source: str,
 ) -> None:
-    """Real SDK resolution/signing must work with only an IAM key pair."""
-    environment = launcher_environment(tmp_path, "6.6-microsoft-WSL2")
+    """The AWS SigV4 specification gives the fixed signature below.
+
+    A wrong secret with the correct access key ID produces a different
+    signature. With no project key, the request must never reach transport.
+    """
+    environment = launcher_environment(tmp_path, "6.6-microsoft-WSL2") | {
+        "AWS_EC2_METADATA_DISABLED": "true",
+    }
     aws_directory = tmp_path / ".config/afterglow/aws"
     aws_directory.mkdir(parents=True)
+    profile_config = "[profile afterglow-dev]\nregion = us-west-2\n"
+    if credential_source == "config":
+        profile_config += (
+            "aws_access_key_id = OTHERCONFIG\n"
+            "aws_secret_access_key = other-fake-secret\n"
+        )
     (aws_directory / "config").write_text(
-        "[profile afterglow-dev]\nregion = us-west-2\n"
-        "[profile afterglow]\ncredential_process = /does/not/exist\n"
+        profile_config
+        + "[profile afterglow]\ncredential_process = /does/not/exist\n"
     )
-    (aws_directory / "credentials").write_text(
-        "[afterglow-dev]\naws_access_key_id = AKIAEXAMPLEONLY\n"
-        "aws_secret_access_key = example-secret-not-real\n"
-    )
-    # Replace only the external uv boundary. Real boto3 and the production
-    # signer resolve the selected private profile and create the HTTP headers.
+    credentials = aws_directory / "credentials"
+    if credential_source == "shared":
+        credentials.write_text(
+            "[afterglow-dev]\naws_access_key_id = AKIAEXAMPLEONLY\n"
+            "aws_secret_access_key = example-secret-not-real\n"
+        )
+    elif credential_source != "missing":
+        credentials.write_text("[afterglow-dev]\n")
+    if credential_source in {"missing", "boto"}:
+        boto_config = tmp_path / ".boto"
+        boto_config.write_text(
+            "[Credentials]\naws_access_key_id = OTHERBOTO\n"
+            "aws_secret_access_key = other-fake-secret\n"
+        )
+        environment["BOTO_CONFIG"] = str(boto_config)
+    if credential_source == "ec2":
+        legacy_credentials = tmp_path / "ec2-credentials"
+        legacy_credentials.write_text(
+            "AWSAccessKeyId=OTHEREC2\nAWSSecretKey=other-fake-secret\n"
+        )
+        environment["AWS_CREDENTIAL_FILE"] = str(legacy_credentials)
+
     wrapper = tmp_path / "uv"
     wrapper.write_text(
         f"#!{sys.executable}\n"
         + dedent("""\
-            import boto3, httpx
-            from movie_db_llm.bedrock import BedrockAuth
+            from datetime import UTC, datetime
+            from functools import partial
+            from unittest.mock import patch
+
+            import httpx
+            from movie_db_llm.bedrock import bedrock_client
 
             def observe(request):
-                auth = request.headers['authorization']
-                assert 'Credential=AKIAEXAMPLEONLY/' in auth
-                assert '/us-west-2/bedrock-mantle/aws4_request' in auth
+                print('sent-request')
+                assert request.headers['authorization'] == (
+                    'AWS4-HMAC-SHA256 Credential=AKIAEXAMPLEONLY/'
+                    '20261118/us-west-2/bedrock-mantle/aws4_request, '
+                    'SignedHeaders=content-length;content-type;host;x-amz-date, '
+                    'Signature=3f280242fa3dd2a57aa8e338c504cb46a7'
+                    '574dc20f9f8072c4a3c297a50dfea5'
+                )
                 assert 'x-amz-security-token' not in request.headers
                 return httpx.Response(200)
 
-            with httpx.Client(
-                auth=BedrockAuth(boto3.Session(), 'us-west-2'),
-                transport=httpx.MockTransport(observe),
-            ) as client:
-                response = client.post(
-                    'https://bedrock-mantle.us-west-2.api.aws/v1/test',
-                    json={},
-                )
-                assert response.status_code == 200
-            print('signed-with-persistent-profile')
+            fixed_time = datetime(2026, 11, 18, 12, tzinfo=UTC)
+            client_with_transport = partial(
+                httpx.Client, transport=httpx.MockTransport(observe)
+            )
+            with (
+                patch.object(httpx, 'Client', client_with_transport),
+                patch(
+                    'botocore.auth.get_current_datetime', return_value=fixed_time
+                ),
+                bedrock_client() as client,
+            ):
+                client.headers.clear()
+                response = client.post('chat/completions', json={})
+                response.raise_for_status()
         """)
     )
     wrapper.chmod(0o755)
     result = subprocess.run(
-        [str(LAUNCHER), "--check"],
+        [str(LAUNCHER), *arguments],
         cwd=PROJECT_ROOT,
         env=environment,
         capture_output=True,
@@ -218,8 +270,18 @@ def test_launcher_signs_with_persistent_profile_without_browser_login(
         check=False,
         timeout=15,
     )
-    assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "signed-with-persistent-profile"
+    if credential_source == "shared":
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "sent-request"
+    else:
+        assert result.returncode != 0
+        assert result.stdout == ""
+        error = (
+            "ProfileNotFound"
+            if credential_source == "missing"
+            else "NoCredentialsError"
+        )
+        assert error in result.stderr
 
 
 def run_config_report(

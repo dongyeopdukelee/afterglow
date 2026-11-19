@@ -13,6 +13,9 @@ resources or resolve the historical runtime throttling below.
 
 ### Shared local-development configuration
 
+The checks below used the earlier login-backed identity. Live verification of
+the persistent `afterglow-dev` profile is pending.
+
 The 2026-11-18 development-parity recheck passed all ten live cases with 363
 catalog genre labels. The batch reported 34,127 input tokens and 484 completion
 tokens. Per-case evaluator time ranged from 239 to 1,667 ms (median 385.5 ms),
@@ -308,9 +311,10 @@ expected result.
 
 ## Repeat the bounded live parsing check
 
-In WSL, set `DATABASE_URL` to the migrated, imported catalog used by the API.
-Run the launcher manually outside CI with the
-[private WSL profile](website.md#deployment-administrator-profile).
+After provisioning and verifying the
+[private WSL profile](website.md#deployment-administrator-profile), set
+`DATABASE_URL` to the migrated, imported catalog used by the API. Run the
+launcher manually in WSL outside CI.
 The `--check` option authorizes up to ten paid Bedrock calls.
 
 ```sh

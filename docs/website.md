@@ -145,46 +145,48 @@ registration/renewal quote within the [selected budget](decisions.md#product-sco
 ### Deployment administrator profile
 
 The owner selected persistent IAM user credentials for WSL development and
-administration. On this host, the `afterglow-dev` profile identifies the
-`afterglow-wsl-dev` IAM user with `AdministratorAccess`. Its access key pair
-has no automatic expiration and does not require `aws login` or a session
-token. This also works with AWS services beyond Bedrock. AWS generally
-recommends temporary credentials; this is the owner's deliberate choice for
-the personal development environment. See
+administration. The target is an `afterglow-dev` profile backed by the
+`afterglow-wsl-dev` IAM user with `AdministratorAccess`. Provisioning and
+live verification are pending a fresh owner sign-in. Once provisioned, the
+key pair can authenticate AWS requests without browser renewal or a session
+token, including for services beyond Bedrock. See
 [IAM key lifetime](https://docs.aws.amazon.com/IAM/latest/UserGuide/securing_access-keys.html)
 and the [admin policy](https://docs.aws.amazon.com/aws-managed-policy/latest/reference/AdministratorAccess.html).
 
-Private config and credentials are stored under
-`/home/dukelee/.config/afterglow/aws/`, outside the repository. Do not put keys
-in application code, frontend/Vite variables, Git, logs, or chat. The hosted
-backend will obtain temporary credentials from its execution role.
+The setup will use the private WSL directory
+`/home/dukelee/.config/afterglow/aws/` for CLI config and the `credentials`
+file. Keep keys outside application code, frontend/Vite variables, Git, logs,
+and chat. The hosted backend will obtain temporary credentials from its
+execution role.
 
-Exported access keys can take precedence over `AWS_PROFILE`. The CLI examples
-select the profile with `--profile`. The WSL launcher clears inherited
-profile, key, web identity, and container credential overrides, selects the
-private project paths, and disables dotenv loading for uv and Uvicorn. The
-poster importer example clears the inherited overrides with `env -u`.
+The WSL launcher selects the `[afterglow-dev]` section of the private
+`credentials` file for both the API and `scripts/dev-api.sh --check`. It
+disables alternate credential sources and dotenv loading for uv and Uvicorn.
 [AWS credential precedence](https://docs.aws.amazon.com/cli/latest/topic/config-vars.html#credentials)
 
-Verify the persistent identity with the private files:
+After provisioning, verify the persistent identity using the same profile and
+credentials file.
 
 ```sh
-env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN \
-AWS_CONFIG_FILE=/home/dukelee/.config/afterglow/aws/config \
-AWS_SHARED_CREDENTIALS_FILE=/home/dukelee/.config/afterglow/aws/credentials \
+env -u AWS_DEFAULT_PROFILE -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY \
+  -u AWS_SESSION_TOKEN -u AWS_SECURITY_TOKEN -u AWS_WEB_IDENTITY_TOKEN_FILE \
+  -u AWS_ROLE_ARN -u AWS_ROLE_SESSION_NAME -u AWS_CREDENTIAL_FILE \
+  -u AWS_CONTAINER_CREDENTIALS_RELATIVE_URI -u AWS_CONTAINER_CREDENTIALS_FULL_URI \
+  AWS_CONFIG_FILE=/dev/null BOTO_CONFIG=/dev/null AWS_EC2_METADATA_DISABLED=true \
+  AWS_SHARED_CREDENTIALS_FILE=/home/dukelee/.config/afterglow/aws/credentials \
   aws --profile afterglow-dev --region us-west-2 sts get-caller-identity
 ```
 
-The ARN should end in `user/afterglow-wsl-dev`. The normal local API command
-and `scripts/dev-api.sh --check` select this profile automatically. New
-interactive zsh shells default to these private paths and `afterglow-dev`
-unless an explicit caller setting is present. Existing terminals can use the
-explicit command above. Browser Console visits still have a separate sign-in.
+The ARN should end in `user/afterglow-wsl-dev`. The planned defaults for new
+interactive zsh shells will select `afterglow-dev` and the private WSL paths
+while honoring explicit caller settings. Browser Console visits use a
+separate sign-in.
 
-The older `afterglow` profile remains available. Its `credential_process` reads the project's
-private WSL `afterglow-source` login session, calls STS AssumeRole, and returns
-one-hour role credentials to its caller. It does not use `role_arn` /
-`source_profile` or the AWS CLI's standard on-disk assume-role cache.
+The older `afterglow` profile remains available. Its `credential_process`
+reads the project's private WSL `afterglow-source` login session, calls STS
+AssumeRole, and returns one-hour role credentials to its caller. It does not
+use `role_arn` / `source_profile` or the AWS CLI's standard on-disk assume-role
+cache.
 The separate `afterglow-source` profile uses `login_session`.
 Only this older route needs browser renewal. If deliberately using it,
 refresh `afterglow-source` with the same config and cache:
@@ -201,13 +203,7 @@ this project session. On this host the default `.aws` path points to Windows;
 the explicit paths above keep project authentication inside WSL. Never copy
 tokens into this repository, logs or chat.
 
-To replace the persistent key later, create a second key for this IAM user,
-save it directly into the private credentials profile, verify STS and a live
-Bedrock check, then deactivate/delete the old key. Do not print the creation
-response: AWS returns the secret only once. No replacement schedule is
-enforced by the standard IAM key type.
-
-For this role's use in WSL and the hosted runtime identity, see the
+For development and hosted identities, see the
 [project decisions](decisions.md#product-scope).
 
 ### Hosted intent parsing (not yet deployed)
