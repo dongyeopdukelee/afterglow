@@ -4,17 +4,17 @@ The 2026-11-18 UTC checks exercised structured parsing with Bedrock in
 `us-west-2` and the locally served website and API. Earlier observations
 cover `us-east-1` and `us-west-2` on 2026-11-15.
 
-The WSL `afterglow` / `afterglow-source` profiles and new WSL zsh sessions
-were configured for Oregon. See [inference configuration](../README.md#inference-configuration)
-for application defaults and overrides. This setting does not move existing
-resources or resolve the historical runtime throttling below.
+At the time of those checks, the login-backed WSL profiles and new WSL zsh
+sessions were configured for Oregon. For application defaults and overrides,
+see [inference configuration](../README.md#inference-configuration). For the
+current profile and provisioning status, see
+[WSL authentication setup](website.md#deployment-administrator-profile).
 
 ## Latest live validation: structured intent passes
 
 ### Shared local-development configuration
 
-The checks below used the earlier login-backed identity. Live verification of
-the persistent `afterglow-dev` profile is pending.
+These results were recorded with the earlier login-backed identity.
 
 The 2026-11-18 development-parity recheck passed all ten live cases with 363
 catalog genre labels. The batch reported 34,127 input tokens and 484 completion
@@ -24,10 +24,11 @@ the request fingerprint
 `22ac008957900599c13afa15375186ff68050e71af5824d6c539ff1192380874`.
 These are measured results for this batch, not an accuracy or latency guarantee.
 
-A separate real-HTTP check through the new WSL launcher, Uvicorn, Bedrock and
-the read-only imported catalog returned ten correct cards for 1990s comedies,
-post-2000 thrillers, and literal `dog` title searches. A detail request loaded
-the synopsis. Plot, OR, and greeting requests returned 422 without cards.
+A separate real-HTTP check through the then-current WSL launcher, Uvicorn,
+Bedrock and the read-only imported catalog returned ten correct cards for
+1990s comedies, post-2000 thrillers, and literal `dog` title searches. A detail
+request loaded the synopsis. Plot, OR, and greeting requests returned 422
+without cards.
 The temporary smoke API was stopped afterward.
 
 Public deployment and verification of the hosted API are still pending.
@@ -111,8 +112,7 @@ AWS documents the model-specific endpoint/ID in the
 [GPT-OSS model card](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-oss-20b.html)
 and the separate APIs and quota systems in its
 [endpoint comparison](https://docs.aws.amazon.com/bedrock/latest/userguide/endpoints.html).
-The future runtime action is `bedrock-mantle:CreateInference`; the local
-administrator role is not the future Lambda execution role.
+The future runtime action is `bedrock-mantle:CreateInference`.
 
 The subsequent [structured-intent evaluation](#latest-live-validation-structured-intent-passes)
 exercised the application parser with the full catalog vocabulary.
@@ -228,8 +228,8 @@ by the proposed approach.
 
 ## Earlier Virginia control-plane checks
 
-- The WSL `afterglow` profile successfully assumes the project administrator
-  role. It is separate from the future application runtime identity.
+- The WSL `afterglow` profile successfully assumed the project administrator
+  role.
 - Bedrock lists Nova Micro and Titan Text Embeddings V2. Account-specific
   availability reports `AUTHORIZED`, agreement/entitlement `AVAILABLE`, and
   regional availability `AVAILABLE` for both candidates.

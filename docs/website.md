@@ -144,37 +144,40 @@ registration/renewal quote within the [selected budget](decisions.md#product-sco
 
 ### Deployment administrator profile
 
-The owner selected persistent IAM user credentials for WSL development and
-administration. The target is an `afterglow-dev` profile backed by the
-`afterglow-wsl-dev` IAM user with `AdministratorAccess`. Provisioning and
-live verification are pending a fresh owner sign-in. Once provisioned, the
-key pair can authenticate AWS requests without browser renewal or a session
-token, including for services beyond Bedrock. See
-[IAM key lifetime](https://docs.aws.amazon.com/IAM/latest/UserGuide/securing_access-keys.html)
-and the [admin policy](https://docs.aws.amazon.com/aws-managed-policy/latest/reference/AdministratorAccess.html).
+The target WSL profile is `afterglow-dev`, backed by the `afterglow-wsl-dev`
+IAM user. Provisioning and live verification are pending a fresh owner
+sign-in. See the [project decisions](decisions.md#product-scope) for the
+choice of credential and permissions.
 
-The setup will use the private WSL directory
-`/home/dukelee/.config/afterglow/aws/` for CLI config and the `credentials`
-file. Keep keys outside application code, frontend/Vite variables, Git, logs,
-and chat. The hosted backend will obtain temporary credentials from its
-execution role.
+The setup will use the private WSL directory `$HOME/.config/afterglow/aws/`
+for CLI configuration and the `credentials` file. The `[afterglow-dev]`
+section in `credentials` holds `aws_access_key_id` and `aws_secret_access_key`.
+Give only the local owner access to the file. Keep keys outside application
+code, frontend/Vite variables, Git, logs, and chat.
 
 The WSL launcher selects the `[afterglow-dev]` section of the private
 `credentials` file for both the API and `scripts/dev-api.sh --check`. It
 disables alternate credential sources and dotenv loading for uv and Uvicorn.
 [AWS credential precedence](https://docs.aws.amazon.com/cli/latest/topic/config-vars.html#credentials)
 
-After provisioning, verify the persistent identity using the same profile and
-credentials file.
+After provisioning, define this function in your WSL shell to run commands
+with the same profile and credentials file as the launcher. The function
+applies the settings only to the command it runs.
 
 ```sh
-env -u AWS_DEFAULT_PROFILE -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY \
-  -u AWS_SESSION_TOKEN -u AWS_SECURITY_TOKEN -u AWS_WEB_IDENTITY_TOKEN_FILE \
-  -u AWS_ROLE_ARN -u AWS_ROLE_SESSION_NAME -u AWS_CREDENTIAL_FILE \
-  -u AWS_CONTAINER_CREDENTIALS_RELATIVE_URI -u AWS_CONTAINER_CREDENTIALS_FULL_URI \
-  AWS_CONFIG_FILE=/dev/null BOTO_CONFIG=/dev/null AWS_EC2_METADATA_DISABLED=true \
-  AWS_SHARED_CREDENTIALS_FILE=/home/dukelee/.config/afterglow/aws/credentials \
-  aws --profile afterglow-dev --region us-west-2 sts get-caller-identity
+with_afterglow_dev() {
+  env -u AWS_DEFAULT_PROFILE -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY \
+    -u AWS_SESSION_TOKEN -u AWS_SECURITY_TOKEN -u AWS_WEB_IDENTITY_TOKEN_FILE \
+    -u AWS_ROLE_ARN -u AWS_ROLE_SESSION_NAME -u AWS_CREDENTIAL_FILE \
+    -u AWS_LOGIN_CACHE_DIRECTORY \
+    -u AWS_CONTAINER_CREDENTIALS_RELATIVE_URI -u AWS_CONTAINER_CREDENTIALS_FULL_URI \
+    -u AWS_CONTAINER_AUTHORIZATION_TOKEN -u AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE \
+    AWS_CONFIG_FILE=/dev/null BOTO_CONFIG=/dev/null AWS_EC2_METADATA_DISABLED=true \
+    AWS_SHARED_CREDENTIALS_FILE="$HOME/.config/afterglow/aws/credentials" \
+    AWS_PROFILE=afterglow-dev "$@"
+}
+
+with_afterglow_dev aws --region us-west-2 sts get-caller-identity
 ```
 
 The ARN should end in `user/afterglow-wsl-dev`. The planned defaults for new
@@ -203,9 +206,6 @@ this project session. On this host the default `.aws` path points to Windows;
 the explicit paths above keep project authentication inside WSL. Never copy
 tokens into this repository, logs or chat.
 
-For development and hosted identities, see the
-[project decisions](decisions.md#product-scope).
-
 ### Hosted intent parsing (not yet deployed)
 
 To inspect the Bedrock fingerprint, use the preview catalog and the server's
@@ -220,8 +220,8 @@ Hosted examples pair each assistant function call with its tool reply. The
 prompt calls for integer years and empty lists for an unconstrained request.
 Ollama uses plain-JSON examples. Both providers share the extraction rules
 and the application's interpretation of year comparisons.
-Credentials refresh through the normal AWS credential chain; Lambda will use
-its execution role, not the local administrator profile. No API key is needed.
+The AWS SDK refreshes the hosted runtime's
+[execution-role credentials](decisions.md#product-scope).
 Catalog browsing, movie details and health remain available when inference fails.
 
 Deterministic regression checks run without AWS credentials or paid calls:

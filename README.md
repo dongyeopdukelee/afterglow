@@ -35,10 +35,8 @@ scripts/dev-api.sh
 The API listens at `http://127.0.0.1:8000`. Recommendation searches use
 paid Amazon Bedrock inference by default. The API sends the query and catalog
 genre labels using the same settings intended for deployment. Browsing and
-loading synopses use only the catalog. For Bedrock searches, the launcher
-requires the persistent `afterglow-dev` WSL key pair. Provisioning and live
-verification are pending a fresh owner sign-in. See
-[project authentication](docs/website.md#deployment-administrator-profile).
+loading synopses use only the catalog. For Bedrock searches, follow the
+[WSL authentication setup](docs/website.md#deployment-administrator-profile).
 
 To run the local website, use Node.js 24+ and start Vite in another terminal:
 

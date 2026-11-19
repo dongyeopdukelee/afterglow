@@ -74,29 +74,18 @@ resolved IDs.
 After correcting source identities or mappings, `--retry-review` can retry
 records whose conflicts have been resolved.
 
-After verifying the
-[WSL deployment profile](website.md#deployment-administrator-profile), use it
-to upload completed files to the existing private bucket.
-The subshell scopes the settings to these three uploads. Keep `--delete`
-out of the sync command to preserve previously uploaded images.
+After verifying the [WSL profile](website.md#deployment-administrator-profile),
+use `with_afterglow_dev` from that setup to upload completed files to the
+existing private bucket. Keep `--delete` out of the sync command to preserve
+previously uploaded images.
 
 ```sh
-(
-  unset AWS_DEFAULT_PROFILE AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY
-  unset AWS_SESSION_TOKEN AWS_SECURITY_TOKEN AWS_WEB_IDENTITY_TOKEN_FILE
-  unset AWS_ROLE_ARN AWS_ROLE_SESSION_NAME AWS_CREDENTIAL_FILE
-  unset AWS_CONTAINER_CREDENTIALS_RELATIVE_URI AWS_CONTAINER_CREDENTIALS_FULL_URI
-  export AWS_CONFIG_FILE=/dev/null BOTO_CONFIG=/dev/null
-  export AWS_EC2_METADATA_DISABLED=true
-  export AWS_SHARED_CREDENTIALS_FILE=/home/dukelee/.config/afterglow/aws/credentials
-
-  aws --profile afterglow-dev --region us-west-2 s3 sync .tools/tmdb-posters/images/ \
-    "s3://$POSTER_BUCKET/posters/" --sse AES256 --only-show-errors
-  aws --profile afterglow-dev --region us-west-2 s3 cp .tools/tmdb-posters/manifest.json \
-    "s3://$POSTER_BUCKET/batches/tmdb/manifest.json" --sse AES256
-  aws --profile afterglow-dev --region us-west-2 s3 cp .tools/tmdb-posters/coverage.json \
-    "s3://$POSTER_BUCKET/batches/tmdb/coverage.json" --sse AES256
-)
+with_afterglow_dev aws --region us-west-2 s3 sync .tools/tmdb-posters/images/ \
+  "s3://$POSTER_BUCKET/posters/" --sse AES256 --only-show-errors
+with_afterglow_dev aws --region us-west-2 s3 cp .tools/tmdb-posters/manifest.json \
+  "s3://$POSTER_BUCKET/batches/tmdb/manifest.json" --sse AES256
+with_afterglow_dev aws --region us-west-2 s3 cp .tools/tmdb-posters/coverage.json \
+  "s3://$POSTER_BUCKET/batches/tmdb/coverage.json" --sse AES256
 ```
 
 These operational files and downloaded bulk assets are ignored by Git; the
@@ -135,17 +124,11 @@ python3 scripts/import_posters.py
 The importer is bounded to the reviewed list and 2 MB per response; it refuses
 unreviewed licenses and non-image formats. It never creates a bucket or makes
 an object public. To upload the images to an existing private project bucket,
-use the WSL-only [deployment profile](website.md#deployment-administrator-profile):
+use `with_afterglow_dev` after verifying the
+[WSL profile](website.md#deployment-administrator-profile).
 
 ```sh
-env -u AWS_DEFAULT_PROFILE -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY \
-  -u AWS_SESSION_TOKEN -u AWS_SECURITY_TOKEN -u AWS_WEB_IDENTITY_TOKEN_FILE \
-  -u AWS_ROLE_ARN -u AWS_ROLE_SESSION_NAME -u AWS_CREDENTIAL_FILE \
-  -u AWS_CONTAINER_CREDENTIALS_RELATIVE_URI -u AWS_CONTAINER_CREDENTIALS_FULL_URI \
-  -u AWS_CONTAINER_AUTHORIZATION_TOKEN -u AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE \
-  AWS_CONFIG_FILE=/dev/null BOTO_CONFIG=/dev/null AWS_EC2_METADATA_DISABLED=true \
-  AWS_SHARED_CREDENTIALS_FILE=/home/dukelee/.config/afterglow/aws/credentials \
-  AWS_PROFILE=afterglow-dev \
+with_afterglow_dev \
   python3 scripts/import_posters.py --bucket "$POSTER_BUCKET" --region us-west-2
 ```
 
