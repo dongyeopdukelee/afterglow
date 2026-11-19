@@ -15,7 +15,7 @@ from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 from botocore.parsers import ResponseParserError
 from botocore.response import StreamingBody
-from urllib3.exceptions import ProtocolError, ReadTimeoutError
+from urllib3.exceptions import ProtocolError, ReadTimeoutError, SSLError
 
 from movie_db_llm import config
 from movie_db_llm.posters import MAX_POSTER_BYTES, PosterAsset
@@ -85,6 +85,7 @@ class PosterStore:
                 ProtocolError,
                 ReadTimeoutError,
                 ResponseParserError,
+                SSLError,
             ):
                 pass
             logger.warning(

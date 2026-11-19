@@ -47,10 +47,13 @@ and separate from disposable test databases. For later schema changes, apply
 the migrations to this database before restarting its API.
 
 Start the WSL API and Vite in two terminals from the root of the persistent
-worktree. Recommendation searches make paid Bedrock calls by default. For
-offline inference with either preview, start the Ollama service and prefix
-the API command with `INTENT_PROVIDER=ollama`. See
-[offline setup](../README.md#optional-offline-inference).
+worktree. Recommendation searches make paid Bedrock calls by default. To use
+local inference in either preview, start Ollama and prefix the WSL launcher
+command with `INTENT_PROVIDER=ollama`. This changes the inference provider
+only. The WSL launcher always uses the project S3 bucket for posters. For
+fully offline use, start the standalone API with posters disabled. See
+[offline setup](../README.md#optional-offline-inference). Keep the preview's
+`DATABASE_URL` and pass its port to Uvicorn with `--port`.
 
 ```sh
 DATABASE_URL="sqlite:///$PWD/.tools/preview/catalog.sqlite3" \

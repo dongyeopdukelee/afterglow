@@ -39,9 +39,12 @@ its abstract placeholder without adding a retry loop.
 
 Set `POSTER_BUCKET` for the backend. The poster client uses `us-west-2`
 (Oregon). Without a bucket, images fall back without AWS calls. The WSL
-launcher uses the [existing project bucket](#stored-batch-and-costs). Hosted
-deployment must configure its own execution role for `s3:GetObject` on this bucket's
-`posters/*` objects; it must not use the owner's local administrator key.
+launcher always uses the [existing project bucket](#stored-batch-and-costs),
+including when Ollama handles inference. For fully offline use, run the
+[standalone API with posters disabled](../README.md#optional-offline-inference).
+Hosted deployment must configure its own execution role for `s3:GetObject`
+on the bucket's `posters/*` objects. The owner's administrator key is for
+local development.
 All AWS authentication stays in the backend; no public bucket or browser
 credentials are required. Public hosting remains a separate milestone.
 
@@ -64,6 +67,10 @@ PY
 uv run python scripts/build_poster_index.py /path/to/verified-enriched-manifest.json \
   src/movie_db_llm/poster_index.json.gz
 ```
+
+Restart the API after a successful rebuild so it loads the new index. The
+running process caches the mappings, and the WSL launcher's Python reload
+watcher does not watch the gzip file.
 
 To regenerate the enriched input from older acquisition reports, use each
 pass's original catalog snapshot. For each verified stored row, look up its

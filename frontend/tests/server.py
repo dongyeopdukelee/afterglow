@@ -115,6 +115,7 @@ def local_posters(directory: Path) -> Generator[posters.PosterAsset]:
             f"http://127.0.0.1:{server.server_port}"
         )
         environ["NO_PROXY"] = "127.0.0.1"
+        environ["no_proxy"] = "127.0.0.1"
         config.POSTER_BUCKET = "test-posters"
         client = cast(BaseClient, poster_store().client)
         client.meta.events.register("before-sign.s3.GetObject", tag_s3_call)

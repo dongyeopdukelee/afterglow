@@ -79,11 +79,17 @@ second terminal. Skip this step if the tag is already cached.
 .tools/ollama/bin/ollama pull "${OLLAMA_MODEL:-qwen3.5:2b}"
 ```
 
-With the weights cached, start the API in the second terminal for offline use.
+With the weights cached, start the standalone API in the second terminal with
+posters disabled for offline use.
 
 ```bash
-INTENT_PROVIDER=ollama scripts/dev-api.sh
+INTENT_PROVIDER=ollama POSTER_BUCKET= \
+  uv run --locked --offline uvicorn movie_db_llm.main:app --host 127.0.0.1
 ```
+
+To use Ollama while keeping S3 posters, run
+`INTENT_PROVIDER=ollama scripts/dev-api.sh`. The WSL launcher always selects
+the project S3 bucket.
 
 An Ollama result does not establish acceptance for the Bedrock route, and
 provider failures never trigger an automatic switch.

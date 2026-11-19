@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 from httpx import Client
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
+from urllib3.exceptions import SSLError
 
 from movie_db_llm import config, main, posters
 from movie_db_llm import poster_store as storage
@@ -131,6 +132,7 @@ def delivery(
         "AWS_ENDPOINT_URL_S3", f"http://127.0.0.1:{server.server_port}"
     )
     monkeypatch.setenv("NO_PROXY", "127.0.0.1")
+    monkeypatch.setenv("no_proxy", "127.0.0.1")
     monkeypatch.setenv("AWS_MAX_ATTEMPTS", "9")
     monkeypatch.setattr(config, "POSTER_BUCKET", "test-posters")
 
@@ -405,22 +407,40 @@ def test_unconfigured_bucket_omits_images_without_s3(
     assert s3.calls == []
 
 
-def test_partial_bodies_are_closed_before_retry(
+@pytest.mark.parametrize(
+    "tls_failure", [False, True], ids=["truncated", "tls"]
+)
+def test_failed_bodies_are_closed_before_retry(
+    delivery: PosterDelivery,
     image: tuple[posters.PosterAsset, bytes],
+    monkeypatch: pytest.MonkeyPatch,
+    tls_failure: bool,
 ) -> None:
-    asset, data = image
+    client, _, _ = delivery
+    _, data = image
     streams: list[io.BytesIO] = []
 
-    class TruncatedClient:
+    class BrokenTLSStream(io.BytesIO):
+        def read(self, size: int | None = -1, /) -> bytes:
+            raise SSLError("Invalid TLS record")
+
+    class BrokenBodyClient:
         def get_object(self, *, Bucket: str, Key: str) -> storage.S3Object:
-            stream = io.BytesIO(data[:20])
+            assert all(stream.closed for stream in streams)
+            stream = (
+                BrokenTLSStream() if tls_failure else io.BytesIO(data[:20])
+            )
             streams.append(stream)
             return {
                 "Body": StreamingBody(stream, len(data)),
                 "ContentLength": len(data),
             }
 
-    with pytest.raises(storage.PosterUnavailableError):
-        storage.PosterStore(TruncatedClient(), "test-posters").fetch(asset)
+    store = storage.PosterStore(BrokenBodyClient(), "test-posters")
+    monkeypatch.setattr(main, "poster_store", lambda: store)
+    response = client.get("/movies/451/poster")
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Poster temporarily unavailable."}
+    assert response.headers["cache-control"] == "no-store"
     assert len(streams) == 3
     assert all(stream.closed for stream in streams)
