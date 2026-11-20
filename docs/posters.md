@@ -75,7 +75,7 @@ PY
 ) &&
 manifest=".tools/poster-catalog/manifest-$manifest_sha.json" &&
 printf '%s  %s\n' "$manifest_sha" "$manifest" \
-  | sha256sum --check &&
+  | sha256sum -c - &&
   uv run python scripts/build_poster_index.py "$manifest" "$index_file"
 ```
 

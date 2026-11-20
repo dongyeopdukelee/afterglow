@@ -117,7 +117,7 @@ your existing platform-specific command and retain its poster bucket and
 inference settings.
 
 ```sh
-DATABASE_URL="sqlite:///file:$PWD/.tools/preview/catalog-wikimedia-2013-2025.sqlite3?mode=ro&uri=true"
+export DATABASE_URL="sqlite:///file:$PWD/.tools/preview/catalog-wikimedia-2013-2025.sqlite3?mode=ro&uri=true"
 ```
 
 Use the Vite command in the
