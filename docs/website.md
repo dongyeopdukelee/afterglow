@@ -97,12 +97,25 @@ same-origin. A future CloudFront deployment must route `/movies`, `/movies/*`
 and `/recommendations` to the API, with remaining paths served from the
 frontend S3 bucket.
 
-The local Wikimedia backfill is available as a separate preview catalog at
-`.tools/preview/catalog-wikimedia-2013-2025.sqlite3`. Use that path in
-`DATABASE_URL` to browse the combined catalog. The matching
-`.tools/wikimedia-backfill/films.json` records the local movie ID, Wikidata ID,
-source genre labels, and Wikipedia plot attribution and revision for each
-added film.
+### Preview the 2013–2025 backfill
+
+The completed local backfill added 3,900 films using Wikidata metadata and
+Wikipedia plot sections. Each release year from 2013 through 2025 contributed
+300 films, with 200 from the U.S., 50 from Korea and Japan combined, and 50
+from other countries. Films were ranked by Wikipedia pageviews within each
+year's regional groups.
+
+From the repository root that contains the existing snapshot, start the
+preview API on port 8001 with the combined catalog open read-only.
+
+```sh
+DATABASE_URL="sqlite:///file:$PWD/.tools/preview/catalog-wikimedia-2013-2025.sqlite3?mode=ro&uri=true" \
+  uv run --locked uvicorn movie_db_llm.main:app --host 127.0.0.1 --port 8001 --reload
+```
+
+The matching `.tools/wikimedia-backfill/films.json` records the local movie ID,
+Wikidata ID, source genre labels, and Wikipedia plot attribution and revision
+for each added film.
 
 ## Verify
 

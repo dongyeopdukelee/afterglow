@@ -231,16 +231,30 @@ def test_optional_year_bounds(
     ) == interpreted_bounds
 
 
-@pytest.mark.parametrize(("limit", "expected_count"), [(None, 10), (12, 12)])
-def test_caps_and_orders_cards_without_duplicates(
+@pytest.mark.parametrize(
+    ("limit", "expected_count"), [(None, 10), (1, 1), (12, 12)]
+)
+def test_limits_ordered_distinct_matches_after_filtering(
     session: Session, limit: int | None, expected_count: int
 ) -> None:
+    add_movie(session, "A Comedy with one genre", genres=("Comedy",))
+    add_movie(session, "An early Comedy", 1989)
+    add_movie(session, "A late Comedy", 2000)
+    add_movie(session, "An undated Comedy", None)
+    add_movie(session, "A film with a different title")
     for number in reversed(range(15)):
         add_movie(session, f"Comedy {number:02}")
-    body: dict[str, object] = {"query": "comedies"}
+    body: dict[str, object] = {"query": "90s comedy dramas titled Comedy"}
     if limit is not None:
         body["limit"] = limit
-    parsed = intent_data(genres=["Comedy", "Drama"])
+    parsed = intent_data(
+        genres=["Comedy", "Drama"],
+        year_filters=[
+            {"comparison": "since", "year": 1990},
+            {"comparison": "until", "year": 1999},
+        ],
+        title_keywords=["Comedy"],
+    )
     with recommendation_client(
         session, lambda _: model_reply(parsed)
     ) as client:

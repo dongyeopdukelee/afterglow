@@ -18,14 +18,8 @@ when a decision is made, changed, or removed.
 - Catalog lists keep movie cards lightweight; full synopses are fetched
   separately. See the [API contracts](../README.md#api).
 - Catalog movie release years are optional.
-- Catalog ingestion uses local snapshots. Recent film acquisition will use
-  Wikidata metadata and Wikipedia plot sections in an offline batch. Visitor
-  requests continue to use the local catalog.
-- The recent-film backfill targets 300 additions per release year from 2013
-  through 2025. Rank films within each year's regional groups by Wikipedia
-  pageviews. Target 200 U.S. films, 50 Korean and Japanese films combined,
-  and 50 films from other countries. Retain the source film ID, original
-  genre labels, plot attribution, and source revision with each new record.
+- Catalog ingestion will use downloadable public dataset snapshots; live
+  provider APIs and freshness automation are deferred.
 - The initial importer will parse the CMU Movie Summary Corpus source files
   directly; generic multi-source ingestion is deferred.
 - Initial catalog imports will validate the complete dataset before writing;
