@@ -30,8 +30,8 @@ with dogs in it" becoming grounded movie recommendations.
 - [x] Parse natural-language movie requests with the
   [configured inference provider](../README.md#inference-configuration).
 - [x] Validate constrained genre, release-year, and title-keyword intent.
-- [x] Build catalog queries in the application and return up to 10 movie cards
-  from `POST /recommendations`.
+- [x] Build catalog queries in the application and return movie cards through
+  the [recommendation API](../README.md#api).
 - [x] Reject unsupported constraints and handle inference provider failures.
 
 ## 5. Semantic retrieval

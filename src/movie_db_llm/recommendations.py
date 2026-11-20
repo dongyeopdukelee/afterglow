@@ -16,7 +16,6 @@ from sqlalchemy.orm import Session, load_only, selectinload
 from movie_db_llm.catalog import catalog_genres
 from movie_db_llm.models import Movie, MovieGenre
 
-RECOMMENDATION_LIMIT = 10
 IntentText = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)
 ]
@@ -35,6 +34,7 @@ class RecommendationRequest(BaseModel):
             strip_whitespace=True, min_length=1, max_length=1000
         ),
     ]
+    limit: Annotated[int, Field(ge=1, le=12)] = 10
 
 
 class MovieIntent(BaseModel):
@@ -87,7 +87,11 @@ class IntentParser(Protocol):
 
 
 def recommend_movies(
-    query: str, session: Session, parser: IntentParser
+    query: str,
+    session: Session,
+    parser: IntentParser,
+    *,
+    limit: int,
 ) -> tuple[MovieIntent, Sequence[Movie]]:
     """Validate intent and combine filters using parameterized ORM queries."""
     genres = catalog_genres(session)
@@ -138,6 +142,6 @@ def recommend_movies(
         )
 
     movies = session.scalars(
-        statement.order_by(Movie.title, Movie.id).limit(RECOMMENDATION_LIMIT)
+        statement.order_by(Movie.title, Movie.id).limit(limit)
     ).all()
     return intent, movies

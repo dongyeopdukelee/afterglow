@@ -54,6 +54,10 @@ See [website development](docs/website.md) for build, browser verification and
 deployment prerequisites. This milestone runs locally; AWS deployment and
 plot/mood matching remain upcoming.
 
+The website uses 12 cards per page for browsing and natural-language search.
+Search fills the page when enough films match the interpreted filters and
+shows fewer cards when fewer films qualify.
+
 Browse and synopsis data come from the catalog. The website loads card and
 detail images separately through the API. See
 [poster delivery and configuration](docs/posters.md#website-delivery).
@@ -108,8 +112,10 @@ provider failures never trigger an automatic switch.
   An optional `seed` (0–2147483647) selects repeatable shuffled discovery,
   with the 13 starter films first. Keep the same seed between pages.
 - `POST /recommendations` interprets a natural-language request using the
-  configured provider and returns up to 10 matching movie cards plus the
-  parsed intent.
+  configured provider and returns matching movie cards plus the parsed
+  intent. The optional request-body `limit` caps the number of cards returned.
+  See the [interactive request schema](http://127.0.0.1:8000/docs#/default/get_recommendations_recommendations_post)
+  for the allowed range and the default for omitted limits.
 - `GET /docs` opens FastAPI's interactive API documentation.
 
 The API does not create or modify its schema at startup. Apply migrations before

@@ -97,6 +97,13 @@ same-origin. A future CloudFront deployment must route `/movies`, `/movies/*`
 and `/recommendations` to the API, with remaining paths served from the
 frontend S3 bucket.
 
+The local Wikimedia backfill is available as a separate preview catalog at
+`.tools/preview/catalog-wikimedia-2013-2025.sqlite3`. Use that path in
+`DATABASE_URL` to browse the combined catalog. The matching
+`.tools/wikimedia-backfill/films.json` records the local movie ID, Wikidata ID,
+source genre labels, and Wikipedia plot attribution and revision for each
+added film.
+
 ## Verify
 
 Run the [Python checks](../README.md#tests-and-checks) separately. For the

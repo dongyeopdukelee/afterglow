@@ -191,9 +191,11 @@ def get_recommendations(
     session: Annotated[Session, Depends(get_session)],
     parser: Annotated[IntentParser, Depends(get_intent_parser)],
 ) -> RecommendationResponse:
-    """Interpret a natural-language request and return up to ten matches."""
+    """Interpret a natural-language request and return a page of matches."""
     try:
-        intent, movies = recommend_movies(request.query, session, parser)
+        intent, movies = recommend_movies(
+            request.query, session, parser, limit=request.limit
+        )
     except UnsupportedRequestError as error:
         raise HTTPException(
             status_code=422,

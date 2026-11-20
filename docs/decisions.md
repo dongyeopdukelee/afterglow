@@ -18,8 +18,14 @@ when a decision is made, changed, or removed.
 - Catalog lists keep movie cards lightweight; full synopses are fetched
   separately. See the [API contracts](../README.md#api).
 - Catalog movie release years are optional.
-- Catalog ingestion will use downloadable public dataset snapshots; live
-  provider APIs and freshness automation are deferred.
+- Catalog ingestion uses local snapshots. Recent film acquisition will use
+  Wikidata metadata and Wikipedia plot sections in an offline batch. Visitor
+  requests continue to use the local catalog.
+- The recent-film backfill targets 300 additions per release year from 2013
+  through 2025. Rank films within each year's regional groups by Wikipedia
+  pageviews. Target 200 U.S. films, 50 Korean and Japanese films combined,
+  and 50 films from other countries. Retain the source film ID, original
+  genre labels, plot attribution, and source revision with each new record.
 - The initial importer will parse the CMU Movie Summary Corpus source files
   directly; generic multi-source ingestion is deferred.
 - Initial catalog imports will validate the complete dataset before writing;
@@ -38,7 +44,10 @@ when a decision is made, changed, or removed.
   hosted route requires a live check against Bedrock.
 - Structured request intent will support catalog genre labels, an optional
   release-year range, and title keywords.
-- Each recommendation request will return at most 10 movie cards.
+- Browsing and recommendation search share a website page size that fills
+  four-, three-, and two-column grids when enough films qualify. See
+  [website usage](../README.md#local-development) and the
+  [recommendation API](../README.md#api).
 - Structured filters are combined with AND. Title keywords match literal,
   case-insensitive substrings. Intent records year bounds and whether each is
   inclusive; database comparisons apply exclusivity without model arithmetic.

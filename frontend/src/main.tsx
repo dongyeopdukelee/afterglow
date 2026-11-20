@@ -124,7 +124,8 @@ function App() {
     const timeout = window.setTimeout(() => controller.abort('timeout'), 120_000);
     try {
       const data = results(await request(search === undefined
-        ? `/movies?limit=${pageSize}&offset=${nextOffset}&seed=${seed}` : '/recommendations', controller.signal, search),
+        ? `/movies?limit=${pageSize}&offset=${nextOffset}&seed=${seed}` : '/recommendations', controller.signal,
+        search === undefined ? undefined : { query: search, limit: pageSize }),
         search === undefined ? 'catalog' : 'recommendations');
       if (!controller.signal.aborted) { setMovies(data.items); setIntent(data.intent); }
     } catch (e) {
