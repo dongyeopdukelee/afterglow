@@ -105,12 +105,14 @@ Wikipedia plot sections. Each release year from 2013 through 2025 contributed
 from other countries. Films were ranked by Wikipedia pageviews within each
 year's regional groups.
 
-From the repository root that contains the existing snapshot, start the
-preview API on port 8001 with the combined catalog open read-only.
+From the repository root that contains the existing snapshot, use the API
+and Vite startup commands in the [interactive preview setup](#interactive-preview-during-development).
+Replace the `DATABASE_URL` assignment in the API command with the one below
+to open the combined catalog read-only. See the
+[private poster bucket configuration](posters.md#website-delivery) for poster access.
 
 ```sh
-DATABASE_URL="sqlite:///file:$PWD/.tools/preview/catalog-wikimedia-2013-2025.sqlite3?mode=ro&uri=true" \
-  uv run --locked uvicorn movie_db_llm.main:app --host 127.0.0.1 --port 8001 --reload
+DATABASE_URL="sqlite:///file:$PWD/.tools/preview/catalog-wikimedia-2013-2025.sqlite3?mode=ro&uri=true"
 ```
 
 The matching `.tools/wikimedia-backfill/films.json` records the local movie ID,
