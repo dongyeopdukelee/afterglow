@@ -276,5 +276,7 @@ The opening selection shuffles on a new visit; its seed stays fixed while
 paging. A `?seed=332` URL makes a visit reproducible. See the
 [API contract](../README.md#api) for ordering.
 
-The catalog attribution remains visible. See
+The footer credits the original catalog and its plot summaries to the CMU
+Movie Summary Corpus. For the added Wikipedia summaries, see the
+[backfill provenance](#preview-the-20132025-backfill). See
 [Image credits](posters.md#image-credits) for poster attribution.

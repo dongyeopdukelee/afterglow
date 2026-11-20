@@ -54,13 +54,15 @@ See [website development](docs/website.md) for build, browser verification and
 deployment prerequisites. This milestone runs locally; AWS deployment and
 plot/mood matching remain upcoming.
 
-The website uses 12 cards per page for browsing and natural-language search.
-Search fills the page when enough films match the interpreted filters and
-shows fewer cards when fewer films qualify.
+The website shows up to 12 cards on each browse page and for each
+natural-language search. Search fills the grid when at least 12 films match
+the interpreted filters.
 
 Browse and synopsis data come from the catalog. The website loads card and
 detail images separately through the API. See
 [poster delivery and configuration](docs/posters.md#website-delivery).
+For the owner's extended local catalog, see the
+[2013–2025 backfill preview](docs/website.md#preview-the-20132025-backfill).
 
 ### Optional offline inference
 
@@ -139,8 +141,8 @@ The response uses an `items` envelope with lightweight movie cards and an
 Title matching uses literal, case-insensitive substrings. Exact years, decades,
 since, and until use inclusive year bounds; before and after use exclusive
 bounds. Undated movies only match when no year filter is requested.
-Recommendation results are ordered by title and identifier, with no relevance
-ranking yet.
+The API applies the limit after filtering, deduplicating and ordering matches
+by title and identifier. There is no relevance ranking yet.
 No matching movies returns an empty `items` list without relaxing filters.
 
 This step supports genres, release years, and title keywords. Requests for

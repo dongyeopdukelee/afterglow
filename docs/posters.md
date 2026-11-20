@@ -2,14 +2,16 @@
 
 ## Website delivery
 
-The website uses the catalog-wide collection for browse and recommendation
-cards and detail views. The two non-interactive hero films use bundled artwork
-and make zero S3 requests. Visitor requests never call TMDB or Wikimedia.
+Browse and recommendation cards and detail views use posters from the
+catalog-wide batch and the supplemental TMDB batch for the 2013–2025 backfill.
+If both batches cover a film identity, the catalog-wide entry takes precedence.
+The two non-interactive hero films use bundled artwork and make zero S3
+requests. Visitor requests never call TMDB or Wikimedia.
 
 Each card loads a poster through the [API](../README.md#api). The backend
 matches exact title/year and a SHA-256 fingerprint of the source synopsis
-using the packaged poster indexes. Local IDs
-from an acquisition checkout are never used as cross-catalog identities.
+using the packaged poster indexes. Local IDs from an acquisition checkout
+are never used as cross-catalog identities.
 Catalog lists and recommendations do not wait for image downloads or call S3
 themselves.
 
@@ -79,11 +81,9 @@ printf '%s  %s\n' "$manifest_sha" "$manifest" \
   uv run python scripts/build_poster_index.py "$manifest" "$index_file"
 ```
 
-The project owner confirmed separate TMDB permission for the 2013–2025
-backfill. Its archived manifest records each film's TMDB and Wikidata IDs,
-matching method, source URLs, and verified object checksum. The API loads the
-recent batch alongside the catalog-wide snapshot. If an identity appears in
-both batches, the catalog-wide entry takes precedence.
+The project owner confirmed separate TMDB permission for the backfill.
+Its archived manifest records the TMDB and Wikidata IDs, matching method,
+source URLs, and verified object checksum for each match.
 
 Restart the API after a successful rebuild so it loads the new indexes. The
 running process caches the mappings, and the WSL launcher's Python reload

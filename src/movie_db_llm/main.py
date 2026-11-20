@@ -191,7 +191,11 @@ def get_recommendations(
     session: Annotated[Session, Depends(get_session)],
     parser: Annotated[IntentParser, Depends(get_intent_parser)],
 ) -> RecommendationResponse:
-    """Interpret a natural-language request and return a page of matches."""
+    """Return catalog matches for a natural-language request.
+
+    When supplied, `limit` must be a JSON integer. Strings, booleans, and
+    numbers written with a decimal point or exponent are rejected.
+    """
     try:
         intent, movies = recommend_movies(
             request.query, session, parser, limit=request.limit

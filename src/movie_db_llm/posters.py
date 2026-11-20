@@ -1,4 +1,4 @@
-"""Reviewed starter films and catalog-wide poster identity metadata."""
+"""Reviewed starter films and packaged poster identity metadata."""
 
 import gzip
 import json
@@ -27,7 +27,7 @@ POSTER_FILMS: tuple[tuple[str, int], ...] = tuple(
 
 @dataclass(frozen=True)
 class PosterAsset:
-    """A verified object from the offline catalog-wide acquisition."""
+    """A verified object from an offline poster acquisition batch."""
 
     filename: str
     size: int
@@ -47,8 +47,8 @@ def poster_identity(title: str, year: int | None, synopsis_hash: str) -> str:
 
 
 def poster_index() -> dict[str, PosterAsset]:
-    # Cold page loads request twelve images concurrently. Avoid decompressing
-    # twelve copies of the large metadata index before the first cache fill.
+    # Serialize the first cache fill so concurrent requests share one
+    # decompression of each index.
     with _index_lock:
         return cached_poster_index()
 
