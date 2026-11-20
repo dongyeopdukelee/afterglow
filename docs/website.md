@@ -46,8 +46,9 @@ The ignored `.tools/preview` directory keeps the real CMU snapshot persistent
 and separate from disposable test databases. For later schema changes, apply
 the migrations to this database before restarting its API.
 
-Start the WSL API and Vite in two terminals from the root of the persistent
-worktree. To run a preview with Ollama, follow the
+From the root of the persistent worktree, start the API in one terminal.
+The API example below uses `scripts/dev-api.sh`, a WSL-only launcher.
+To run a preview with Ollama, follow the
 [local inference setup](../README.md#optional-offline-inference). Keep the
 preview's `DATABASE_URL` and pass its port with `--port`.
 
@@ -55,6 +56,8 @@ preview's `DATABASE_URL` and pass its port with `--port`.
 DATABASE_URL="sqlite:///$PWD/.tools/preview/catalog.sqlite3" \
   scripts/dev-api.sh --port 8001
 ```
+
+Start Vite in a separate terminal from the worktree root.
 
 ```sh
 cd frontend
@@ -67,8 +70,9 @@ remain same-origin. Restart Vite if changing this setting. Recommendation
 searches use the [configured inference provider](../README.md#inference-configuration);
 browsing and synopses do not require inference.
 
-For an independent UI redesign preview, run the other checkout's API on 8002
-and Vite on 5175. From the persistent worktree, run
+For an independent UI redesign preview on WSL, use the same launcher for
+the other checkout's API on 8002 and start Vite on 5175. From the persistent
+worktree, run
 `export PREVIEW_CATALOG="$PWD/.tools/preview/catalog.sqlite3"` before switching
 the shell to the redesign checkout. Its API opens the same catalog read-only.
 
@@ -105,15 +109,21 @@ Wikipedia plot sections. Each release year from 2013 through 2025 contributed
 from other countries. Films were ranked by Wikipedia pageviews within each
 year's regional groups.
 
-From the repository root that contains the existing snapshot, use the API
-and Vite startup commands in the [interactive preview setup](#interactive-preview-during-development).
-Replace the `DATABASE_URL` assignment in the API command with the one below
-to open the combined catalog read-only. See the
-[private poster bucket configuration](posters.md#website-delivery) for poster access.
+From the repository root that contains the existing snapshot, set the
+following `DATABASE_URL` in the environment of your existing preview API
+startup to open the combined catalog read-only. If that startup command
+already sets `DATABASE_URL` inline, replace that value. Start the API using
+your existing platform-specific command and retain its poster bucket and
+inference settings.
 
 ```sh
 DATABASE_URL="sqlite:///file:$PWD/.tools/preview/catalog-wikimedia-2013-2025.sqlite3?mode=ro&uri=true"
 ```
+
+Use the Vite command in the
+[interactive preview setup](#interactive-preview-during-development) and see
+the [private poster bucket configuration](posters.md#website-delivery) for
+poster access.
 
 The matching `.tools/wikimedia-backfill/films.json` records the local movie ID,
 Wikidata ID, source genre labels, and Wikipedia plot attribution and revision
