@@ -177,7 +177,7 @@ function App() {
         {mode === 'browse' && !loading && !error && <nav className="pagination" aria-label="Catalog pages"><button disabled={offset === 0} onClick={() => void load(undefined, Math.max(0, offset - pageSize))}>← Previous</button><span>Page {Math.floor(offset / pageSize) + 1}</span><button disabled={movies.length < pageSize} onClick={() => void load(undefined, offset + pageSize)}>Next →</button></nav>}
       </section>
     </main>
-    <footer><div className="footer-top"><span className="brand">afterglow</span><p>Good films leave a little afterglow.</p></div><p className="attribution">Catalog and plot summaries: <a href="https://www.cs.cmu.edu/~ark/personas/" target="_blank" rel="noreferrer">CMU Movie Summary Corpus</a> · <a href="https://creativecommons.org/licenses/by-sa/3.0/us/" target="_blank" rel="noreferrer">CC BY-SA 3.0 US</a>.</p>
+    <footer><div className="footer-top"><span className="brand">afterglow</span><p>Good films leave a little afterglow.</p></div><p className="attribution">Original catalog and plot summaries: <a href="https://www.cs.cmu.edu/~ark/personas/" target="_blank" rel="noreferrer">CMU Movie Summary Corpus</a> · <a href="https://creativecommons.org/licenses/by-sa/3.0/us/" target="_blank" rel="noreferrer">CC BY-SA 3.0 US</a>.</p>
       <section className="image-credits" aria-labelledby="image-credits-title">
         <h2 id="image-credits-title">Image credits</h2>
         <a href="https://www.themoviedb.org" target="_blank" rel="noreferrer"><img src="/credits/tmdb.svg" alt="TMDB" width="120" /></a>
