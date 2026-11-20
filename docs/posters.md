@@ -2,25 +2,26 @@
 
 ## Website delivery
 
-The website uses the catalog-wide collection for browse and recommendation
-cards and detail views. The two non-interactive hero films use bundled artwork
-and make zero S3 requests. Visitor requests never call TMDB or Wikimedia.
+Browse and recommendation cards and detail views use posters from the
+catalog-wide batch and the supplemental TMDB batch for the 2013–2025 backfill.
+If both batches cover a film identity, the catalog-wide entry takes precedence.
+The two non-interactive hero films use bundled artwork and make zero S3
+requests. Visitor requests never call TMDB or Wikimedia.
 
 Each card loads a poster through the [API](../README.md#api). The backend
 matches exact title/year and a SHA-256 fingerprint of the source synopsis
-using the packaged `src/movie_db_llm/poster_index.json.gz` index. Local IDs
-from an acquisition checkout are never used as cross-catalog identities.
+using the packaged poster indexes. Local IDs from an acquisition checkout
+are never used as cross-catalog identities.
 Catalog lists and recommendations do not wait for image downloads or call S3
 themselves.
 
-A full browse page eagerly schedules all 12 poster slots. Three card download
-slots and one reserved detail slot limit concurrent poster downloads.
+Browse and search results eagerly schedule one poster slot per card. Three
+card download slots and one reserved detail slot limit concurrent downloads.
 The [Web Locks API](https://w3c.github.io/web-locks/) shares
 these slots across same-origin tabs where available, such as on localhost or
 HTTPS. When Web Locks is unavailable or acquisition fails, the page uses the
 same limits in its own queue. The browser cancels queued and in-flight card
-downloads when leaving a results page. Recommendation pages follow the
-[API result limit](../README.md#api). Each matched poster
+downloads when leaving a results page. Each matched poster
 normally makes one S3 GET with no preceding HEAD. Responses include
 `Cache-Control: no-store` so fresh page loads fetch again. An unmatched film
 uses the [API's 404 response](../README.md#api) without contacting S3. Each
@@ -54,28 +55,37 @@ credentials are required. Public hosting remains a separate milestone.
 
 ### Rebuild the delivery index
 
-To reproduce the shipped index, use the owner's archived copy of the enriched
+To reproduce either shipped index, use the owner's archived copy of the enriched
 manifest at `.tools/poster-catalog/manifest-<sha256>.json`, where `<sha256>` is
-`source_manifest_sha256` from the shipped index. If the archive is missing from
+`source_manifest_sha256` from that index. If the archive is missing from
 your checkout, obtain the checksum-matched file from the batch owner. From the
-project root, verify the archived input before rebuilding.
+project root, set `index_file` to the appropriate file under
+`src/movie_db_llm/`. Use `poster_index.json.gz` for the original catalog-wide
+batch and `recent_poster_index.json.gz` for the backfill. Verify the archived
+input before rebuilding.
 
 ```sh
-manifest_sha=$(python3 - <<'PY'
+index_file=src/movie_db_llm/recent_poster_index.json.gz
+manifest_sha=$(python3 - "$index_file" <<'PY'
 import gzip
 import json
+import sys
 
-with gzip.open("src/movie_db_llm/poster_index.json.gz", "rt") as index:
+with gzip.open(sys.argv[1], "rt") as index:
     print(json.load(index)["source_manifest_sha256"])
 PY
 ) &&
 manifest=".tools/poster-catalog/manifest-$manifest_sha.json" &&
 printf '%s  %s\n' "$manifest_sha" "$manifest" \
-  | sha256sum --check &&
-  uv run python scripts/build_poster_index.py "$manifest" src/movie_db_llm/poster_index.json.gz
+  | sha256sum -c - &&
+  uv run python scripts/build_poster_index.py "$manifest" "$index_file"
 ```
 
-Restart the API after a successful rebuild so it loads the new index. The
+The project owner confirmed separate TMDB permission for the backfill.
+Its archived manifest records the TMDB and Wikidata IDs, matching method,
+source URLs, and verified object checksum for each match.
+
+Restart the API after a successful rebuild so it loads the new indexes. The
 running process caches the mappings, and the WSL launcher's Python reload
 watcher does not watch the gzip file.
 

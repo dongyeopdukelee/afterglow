@@ -16,13 +16,13 @@ export type Intent = {
 };
 export type Results = { items: Movie[]; intent?: Intent };
 
-export async function request(path: string, signal: AbortSignal, query?: string): Promise<unknown> {
+export async function request(path: string, signal: AbortSignal, body?: { query: string; limit: number }): Promise<unknown> {
   const response = await fetch(path, {
     signal,
-    ...(query === undefined ? {} : {
+    ...(body === undefined ? {} : {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query }),
+      body: JSON.stringify(body),
     }),
   });
   if (!response.ok) {

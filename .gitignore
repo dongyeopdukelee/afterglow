@@ -3,6 +3,7 @@ __pycache__/
 .pytest_cache/
 movie_db.sqlite3
 .tools/
+/.tmdb_api
 frontend/node_modules
 frontend/dist/
 frontend/test-results/

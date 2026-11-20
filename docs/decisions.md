@@ -38,7 +38,10 @@ when a decision is made, changed, or removed.
   hosted route requires a live check against Bedrock.
 - Structured request intent will support catalog genre labels, an optional
   release-year range, and title keywords.
-- Each recommendation request will return at most 10 movie cards.
+- Browsing and recommendation search share a website page size that fills
+  four-, three-, and two-column grids when enough films qualify. See
+  [website usage](../README.md#local-development) and the
+  [recommendation API](../README.md#api).
 - Structured filters are combined with AND. Title keywords match literal,
   case-insensitive substrings. Intent records year bounds and whether each is
   inclusive; database comparisons apply exclusivity without model arithmetic.

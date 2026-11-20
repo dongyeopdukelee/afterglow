@@ -359,12 +359,14 @@ test('a visitor can rapidly reopen the same synopsis with the keyboard', async (
 });
 
 test('search sends the entered request and exposes interpreted filters', async ({ page }) => {
-  // Inference is an external boundary: the returned card and intent are an
+  // Inference is an external boundary: the returned cards and intent are an
   // explicit API contract fixture, not evidence of live model accuracy.
   await page.route('**/recommendations', async route => {
-    expect(route.request().postDataJSON()).toEqual({ query: '90s comedies' });
+    expect(route.request().postDataJSON()).toEqual({ query: '90s comedies', limit: 12 });
     await route.fulfill({ json: {
-      items: [{ id: 1, title: 'A Known Comedy', release_year: 1995, genres: ['Comedy'] }],
+      items: Array.from({ length: 12 }, (_, index) => ({
+        id: index + 1, title: `Comedy ${index + 1}`, release_year: 1995, genres: ['Comedy'],
+      })),
       intent: comedyIntent,
     } });
   });
@@ -372,7 +374,8 @@ test('search sends the entered request and exposes interpreted filters', async (
   await expect(page.getByRole('heading', { name: 'Film 00', exact: true })).toBeVisible();
   await page.getByRole('textbox').fill('90s comedies');
   await page.getByRole('button', { name: 'Find a film' }).click();
-  await expect(page.getByRole('heading', { name: 'A Known Comedy' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Comedy 12', exact: true })).toBeVisible();
+  await expect(page.locator('.movie-card')).toHaveCount(12);
   await expect(page.getByText(/Interpreted filters:/)).toHaveText('Interpreted filters: genres: Comedy · year ≥ 1990 · year ≤ 1999');
   await page.getByRole('button', { name: 'Browse all films' }).focus();
   await page.getByRole('button', { name: 'Browse all films' }).press('Enter');

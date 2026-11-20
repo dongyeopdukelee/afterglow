@@ -121,7 +121,8 @@ def test_combines_filters_and_sends_catalog_schema(session: Session) -> None:
 
     with recommendation_client(session, handler) as client:
         response = client.post(
-            "/recommendations", json={"query": "90s comedy dramas, Dog Days"}
+            "/recommendations",
+            json={"query": "90s comedy dramas, Dog Days", "limit": 12},
         )
 
     assert response.status_code == 200
@@ -230,17 +231,37 @@ def test_optional_year_bounds(
     ) == interpreted_bounds
 
 
-def test_caps_and_orders_cards_without_duplicates(session: Session) -> None:
+@pytest.mark.parametrize(
+    ("limit", "expected_count"), [(None, 10), (1, 1), (12, 12)]
+)
+def test_limits_ordered_distinct_matches_after_filtering(
+    session: Session, limit: int | None, expected_count: int
+) -> None:
+    add_movie(session, "A Comedy with one genre", genres=("Comedy",))
+    add_movie(session, "An early Comedy", 1989)
+    add_movie(session, "A late Comedy", 2000)
+    add_movie(session, "An undated Comedy", None)
+    add_movie(session, "A film with a different title")
     for number in reversed(range(15)):
         add_movie(session, f"Comedy {number:02}")
-    parsed = intent_data(genres=["Comedy", "Drama"])
+    body: dict[str, object] = {"query": "90s comedy dramas titled Comedy"}
+    if limit is not None:
+        body["limit"] = limit
+    parsed = intent_data(
+        genres=["Comedy", "Drama"],
+        year_filters=[
+            {"comparison": "since", "year": 1990},
+            {"comparison": "until", "year": 1999},
+        ],
+        title_keywords=["Comedy"],
+    )
     with recommendation_client(
         session, lambda _: model_reply(parsed)
     ) as client:
-        response = client.post("/recommendations", json={"query": "comedies"})
+        response = client.post("/recommendations", json=body)
     assert response.status_code == 200
     assert [item["title"] for item in response.json()["items"]] == [
-        f"Comedy {number:02}" for number in range(10)
+        f"Comedy {number:02}" for number in range(expected_count)
     ]
 
 
@@ -355,7 +376,10 @@ def test_no_matches_does_not_relax_filters(session: Session) -> None:
         {"query": " "},
         {"query": "x" * 1001},
         {"query": 123},
-        {"query": "comedy", "limit": 100},
+        {"query": "comedy", "limit": 0},
+        {"query": "comedy", "limit": 13},
+        {"query": "comedy", "limit": "12"},
+        {"query": "comedy", "offset": 12},
     ],
 )
 def test_invalid_request_never_calls_model(

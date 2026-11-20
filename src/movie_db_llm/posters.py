@@ -1,4 +1,4 @@
-"""Reviewed starter films and catalog-wide poster identity metadata."""
+"""Reviewed starter films and packaged poster identity metadata."""
 
 import gzip
 import json
@@ -27,7 +27,7 @@ POSTER_FILMS: tuple[tuple[str, int], ...] = tuple(
 
 @dataclass(frozen=True)
 class PosterAsset:
-    """A verified object from the offline catalog-wide acquisition."""
+    """A verified object from an offline poster acquisition batch."""
 
     filename: str
     size: int
@@ -47,31 +47,29 @@ def poster_identity(title: str, year: int | None, synopsis_hash: str) -> str:
 
 
 def poster_index() -> dict[str, PosterAsset]:
-    # Cold page loads request twelve images concurrently. Avoid decompressing
-    # twelve copies of the large metadata index before the first cache fill.
+    # Serialize the first cache fill so concurrent requests share one
+    # decompression of each index.
     with _index_lock:
         return cached_poster_index()
 
 
 @lru_cache(maxsize=1)
 def cached_poster_index() -> dict[str, PosterAsset]:
-    """Load the packaged metadata index; image bytes always come from S3."""
-    try:
-        data = json.loads(
-            gzip.decompress(
-                files("movie_db_llm")
-                .joinpath("poster_index.json.gz")
-                .read_bytes()
+    """Load the packaged batch indexes; image bytes always come from S3."""
+    package = files("movie_db_llm")
+    index: dict[str, PosterAsset] = {}
+    for filename in ("poster_index.json.gz", "recent_poster_index.json.gz"):
+        try:
+            data = json.loads(
+                gzip.decompress(package.joinpath(filename).read_bytes())
             )
-        )
-    except (EOFError, CompressionError) as error:
-        raise ValueError("Invalid compressed poster index") from error
-    if data["version"] != 1:
-        raise ValueError("Unsupported poster index version")
-    return {
-        identity: PosterAsset(*asset)
-        for identity, asset in data["films"].items()
-    }
+        except (EOFError, CompressionError) as error:
+            raise ValueError("Invalid compressed poster index") from error
+        if data["version"] != 1:
+            raise ValueError("Unsupported poster index version")
+        for identity, asset in data["films"].items():
+            index.setdefault(identity, PosterAsset(*asset))
+    return index
 
 
 def poster_for(
